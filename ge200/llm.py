@@ -111,6 +111,17 @@ def save_config(updates: Dict[str, Optional[str]]) -> None:
     _cache.clear()
 
 
+def source_of(*names: str) -> str:
+    """Where a setting comes from: 'environment' (real environment or .env), 'saved' (editor setup) or ''."""
+    saved = _file_env()
+    for n in names:
+        if os.environ.get(n, "").strip():
+            return "environment"
+        if saved.get(n):
+            return "saved"
+    return ""
+
+
 def _env(*names: str) -> str:
     """A setting from the real environment, else from the editor's saved setup."""
     saved = None
@@ -162,7 +173,8 @@ class Provider:
         elif not self.default_model():
             reason = "pick a model name (the editor remembers it, or set GE200_LLM_MODEL)"
         return {"id": self.id, "label": self.label, "available": self.needs_key is False or bool(key),
-                "reason": reason, "default_model": self.default_model(), "needs_key": self.needs_key}
+                "reason": reason, "default_model": self.default_model(), "needs_key": self.needs_key,
+                "source": source_of(*self.key_env) if self.key_env else ""}
 
     def complete(self, system: str, user: str, schema: dict, model: str, effort: str = "high") -> Completion:
         raise NotImplementedError
@@ -187,7 +199,8 @@ class AnthropicProvider(Provider):
 
     def info(self) -> dict:
         has_key = bool(_env("ANTHROPIC_API_KEY"))
-        base = {"id": self.id, "label": self.label, "default_model": self.default_model(), "needs_key": True}
+        base = {"id": self.id, "label": self.label, "default_model": self.default_model(), "needs_key": True,
+                "source": source_of("ANTHROPIC_API_KEY")}
         if self._client is not None:
             return {**base, "available": True, "reason": ""}
         if has_key:                                  # works with or without the SDK (REST fallback)
