@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" width="960" height="300" role="img" aria-label="GE200 Editor banner">
+  <rect width="960" height="300" rx="16" fill="#F5F2EB"/>
+  <!-- patch cables -->
+  <path d="M154 176 C 170 176, 168 176, 186 176" stroke="#1E1E1C" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M290 176 C 306 176, 304 176, 322 176" stroke="#1E1E1C" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- three pedals -->
+  <g transform="translate(54,56)">
+    <rect width="100" height="176" rx="12" fill="#E3A33A" stroke="#1E1E1C" stroke-width="2"/>
+    <rect x="12" y="12" width="76" height="18" rx="3" fill="#1E1E1C"/>
+    <circle cx="30" cy="62" r="13" fill="#1E1E1C"/><line x1="30" y1="62" x2="26" y2="52" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="70" cy="62" r="13" fill="#1E1E1C"/><line x1="70" y1="62" x2="77" y2="53" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="30" cy="104" r="13" fill="#1E1E1C"/><line x1="30" y1="104" x2="30" y2="93" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="70" cy="104" r="13" fill="#1E1E1C"/><line x1="70" y1="104" x2="62" y2="96" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="26" cy="138" r="5" fill="#FF3B2F"/>
+    <circle cx="62" cy="144" r="17" fill="#CFCBC2" stroke="#1E1E1C" stroke-width="2"/>
+  </g>
+  <g transform="translate(186,56)">
+    <rect width="100" height="176" rx="12" fill="#2F7A4B" stroke="#1E1E1C" stroke-width="2"/>
+    <rect x="12" y="12" width="76" height="18" rx="3" fill="#1E1E1C"/>
+    <circle cx="30" cy="62" r="13" fill="#1E1E1C"/><line x1="30" y1="62" x2="36" y2="52" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="70" cy="62" r="13" fill="#1E1E1C"/><line x1="70" y1="62" x2="63" y2="53" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="50" cy="104" r="13" fill="#1E1E1C"/><line x1="50" y1="104" x2="58" y2="95" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="26" cy="138" r="5" fill="#FF3B2F"/>
+    <circle cx="62" cy="144" r="17" fill="#CFCBC2" stroke="#1E1E1C" stroke-width="2"/>
+  </g>
+  <g transform="translate(318,56)">
+    <rect width="100" height="176" rx="12" fill="#3F6FB8" stroke="#1E1E1C" stroke-width="2"/>
+    <rect x="12" y="12" width="76" height="18" rx="3" fill="#1E1E1C"/>
+    <circle cx="30" cy="62" r="13" fill="#1E1E1C"/><line x1="30" y1="62" x2="23" y2="55" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="70" cy="62" r="13" fill="#1E1E1C"/><line x1="70" y1="62" x2="70" y2="50" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="30" cy="104" r="13" fill="#1E1E1C"/><line x1="30" y1="104" x2="38" y2="96" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="70" cy="104" r="13" fill="#1E1E1C"/><line x1="70" y1="104" x2="63" y2="113" stroke="#F5F2EB" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="26" cy="138" r="5" fill="#5A1A16"/>
+    <circle cx="62" cy="144" r="17" fill="#CFCBC2" stroke="#1E1E1C" stroke-width="2"/>
+  </g>
+  <!-- text -->
+  <text x="470" y="130" fill="#1E1E1C" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="56" font-weight="700">GE200</text>
+  <text x="470" y="186" fill="#B5451B" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="44" font-weight="600">Editor</text>
+  <text x="470" y="228" fill="#6A665D" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="18" textLength="430" lengthAdjust="spacingAndGlyphs">A browser pedalboard for the Mooer GE200</text>
+</svg>

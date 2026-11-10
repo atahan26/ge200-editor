@@ -1,13 +1,27 @@
 [project]
 name = "ge200"
 version = "0.1.0"
-description = "Unofficial, read-only Python access to the Mooer GE200 (Windows, stdlib only)"
+description = "Unofficial browser pedalboard editor, CLI and Python library for the Mooer GE200 (reverse-engineered USB protocol)"
 requires-python = ">=3.9"
 readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Atahan Şevki Bilginoğlu" }]
+keywords = ["mooer", "ge200", "guitar", "multi-effects", "preset editor", "usb hid", "expression pedal", "impulse response", "nam"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Sound/Audio",
+]
 
 [project.optional-dependencies]
 llm = ["anthropic"]          # only for the tone generator (ge200.tone / web editor "Generate")
 audio = ["numpy", "scipy", "soundfile"]   # impulse-response / capture file handling
+
+[project.urls]
+Homepage = "https://github.com/atahan26/ge200-editor"
+Issues = "https://github.com/atahan26/ge200-editor/issues"
 
 [project.scripts]
 ge200 = "ge200.cli:main"
@@ -17,7 +31,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["ge200", "ge200.web"]
+packages = ["ge200", "ge200.web", "ge200.nam"]
 
 [tool.setuptools.package-data]
 "ge200.web" = ["static/*.html"]

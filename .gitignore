@@ -11,3 +11,13 @@ __pycache__/
 .env
 *.egg-info/
 .venv-nam/
+backups/
+backup*.json
+backup*.bin
+*.bin
+build/
+dist/
+llm.json
+rig.json
+.claude/
+*.nam
