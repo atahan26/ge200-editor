@@ -51,6 +51,7 @@
   .row { display: flex; gap: 8px; align-items: center; padding: 6px 12px; cursor: pointer; border-bottom: 1px solid #0000000d; }
   .row:hover { background: var(--paper-2); }
   .row.sel { background: #fff; box-shadow: inset 4px 0 0 var(--ink); font-weight: 600; }
+  .row.blank { color: #8a949b; }
   .row .n { width: 28px; color: var(--mute); font: 12px var(--hw); font-variant-numeric: tabular-nums; }
   .row .led { width: 8px; height: 8px; border-radius: 50%; background: transparent; flex: none; }
   .row.act .led { background: var(--led); box-shadow: 0 0 6px 1px #ff3b2faa; }
@@ -352,7 +353,7 @@ const isDirty = () => cur && JSON.stringify(cur.edit) !== JSON.stringify(editFro
 // ---------------------------------------------------------------- state, setlist
 function renderMeta(extra) {
   const d = $("#meta"); d.textContent = "";
-  const items = extra ? [["Status", extra]] : [["Firmware", S.firmware || "?"], ["Presets", S.presets.length], ["Active", S.active], ["Backup", S.backed_up ? "saved" : "not yet"]];
+  const items = extra ? [["Status", extra]] : [["Firmware", S.firmware || "?"], ["Presets", S.presets.length], ["Active", S.active == null ? "?" : S.active + 1], ["Backup", S.backed_up ? "saved" : "not yet"]];
   for (const [k, v] of items) { const w = el("div"); w.append(el("dt", "", k), el("dd", "", String(v))); d.appendChild(w); }
 }
 async function loadState() { S = await api("/api/state"); renderMeta(); renderList(); }
@@ -360,9 +361,10 @@ function renderList() {
   const q = $("#search").value.trim().toLowerCase();
   const box = $("#list"); box.textContent = "";
   for (const p of S.presets) {
-    if (q && !(p.name.toLowerCase().includes(q) || String(p.index) === q)) continue;
-    const d = el("div", "row" + (cur && cur.slot === p.index ? " sel" : "") + (p.index === S.active ? " act" : ""));
-    d.append(el("span", "n", String(p.index)), el("span", "led"), el("span", "", p.name || "(no name)"));
+    if (q && !(p.name.toLowerCase().includes(q) || String(p.index + 1) === q)) continue;
+    const isEmpty = (p.name || "").trim().toUpperCase() === "EMPTY";
+    const d = el("div", "row" + (cur && cur.slot === p.index ? " sel" : "") + (p.index === S.active ? " act" : "") + (isEmpty ? " blank" : ""));
+    d.append(el("span", "n", String(p.index + 1)), el("span", "led"), el("span", "", p.name || "(no name)"));
     d.onclick = () => openPreset(p.index);
     box.appendChild(d);
   }
@@ -399,8 +401,8 @@ function pollVerify() {
       const s = await api("/api/status");
       if (s.verify.state === "pending") return;
       clearInterval(verifyTimer);
-      if (s.verify.state === "ok") toast(`Slot ${s.verify.slot} verified on the unit`);
-      else toast(`Slot ${s.verify.slot}: read-back differs from what was saved!`, true);
+      if (s.verify.state === "ok") toast(`Preset ${s.verify.slot + 1} verified on the unit`);
+      else toast(`Preset ${s.verify.slot + 1}: read-back differs from what was saved!`, true);
     } catch (e) { clearInterval(verifyTimer); toast(e.message, true); }
   }, 1500);
 }
@@ -630,19 +632,30 @@ function renderEditor() {
   const ed = $("#editor"); ed.textContent = "";
   const e = cur.edit;
   const bar = el("div", "bar");
-  bar.innerHTML = `<span class="slot-no">#${cur.slot}</span><input type="text" id="name" maxlength="16" spellcheck="false" aria-label="Preset name">
+  bar.innerHTML = `<span class="slot-no">${cur.slot + 1}</span><input type="text" id="name" maxlength="16" spellcheck="false" aria-label="Preset name">
     <label><input type="checkbox" id="audition" checked> Live audition</label><span class="dirty" id="dirty"></span><span class="spacer"></span>
-    <button class="btn" id="revert">Revert</button><button class="btn go" id="save" title="Ctrl+S">Save to slot ${cur.slot}</button>`;
+    <button class="btn" id="clear" title="Turn this preset into an empty one (stored only when you press Save)">Clear</button><button class="btn" id="revert">Revert</button><button class="btn go" id="save" title="Ctrl+S">Save to preset ${cur.slot + 1}</button>`;
   ed.appendChild(bar);
   $("#name").value = e.name;
   $("#name").oninput = ev => { e.name = ev.target.value; scheduleLive(); };
+  $("#clear").onclick = async () => {
+    if (!confirm(`Clear preset ${cur.slot + 1} in the editor? It becomes an empty preset. Nothing is stored on the unit until you press Save.`)) return;
+    clearTimeout(timer);
+    try {
+      const blank = S.presets.find(p => (p.name || "").trim().toUpperCase() === "EMPTY");
+      if (blank) { cur.edit = editFrom(await api("/api/preset/" + blank.index)); }
+      else { for (const m of Object.values(cur.edit.modules)) m.enabled = false; cur.edit.chain_order = [1, 2, 3, 4, 5, 6, 7, 8, 9]; }
+      cur.edit.name = "EMPTY";
+      renderEditor(); scheduleLive(); toast("Cleared in the editor. Press Save to store it.");
+    } catch (err) { toast(err.message, true); }
+  };
   $("#revert").onclick = async () => {
     clearTimeout(timer); const my = ++epoch;
     cur.edit = editFrom(cur.stored); renderEditor();
     try { await api("/api/revert", { slot: cur.slot, epoch: my }); toast("Reverted to the stored preset"); } catch (err) { toast(err.message, true); }
   };
   $("#save").onclick = async () => {
-    if (!confirm(`Overwrite slot ${cur.slot} on the unit?` + (S.backed_up ? "" : "\n\nA full backup is saved first."))) return;
+    if (!confirm(`Overwrite preset ${cur.slot + 1} on the unit?` + (S.backed_up ? "" : "\n\nA full backup is saved first."))) return;
     clearTimeout(timer);
     try {
       const r = await api("/api/save", { slot: cur.slot, edit: cur.edit });
@@ -650,7 +663,7 @@ function renderEditor() {
       await loadState(); renderEditor();
       if (r.unchanged) toast("Nothing to save: identical to what is stored (nothing was written)");
       else if (r.ok === null && r.pending) { toast("Saved. Verifying..."); pollVerify(); }
-      else if (r.ok === null) toast("Saved to slot " + cur.slot + ". (Press Refresh to re-read the unit and verify.)");
+      else if (r.ok === null) toast("Saved to preset " + (cur.slot + 1) + ". (Press Refresh to re-read the unit and verify.)");
       else toast(r.ok ? "Saved and verified on the unit" : "Saved, but read-back differs!", !r.ok);
     } catch (err) { toast(err.message, true); }
   };
