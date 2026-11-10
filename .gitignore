@@ -1,0 +1,10 @@
+﻿# Never commit device dumps, captures, or vendor binaries
+dumps/
+captures/
+vendor/
+*.pcap
+*.pcapng
+*.mbf
+*.mr
+__pycache__/
+.venv/

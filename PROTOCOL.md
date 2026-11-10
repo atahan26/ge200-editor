@@ -1,0 +1,199 @@
+# GE200 USB protocol notes (DRAFT, stage 2, static analysis only)
+
+Status legend: **[S]** = derived from static analysis of the vendor editor, never seen on the wire.
+**[V]** = verified on the user's own device (USB captures / descriptors).
+Nothing here has been confirmed by observing traffic yet.
+
+## Transport [V]
+- USB composite device, VID 0x0483 / PID 0x5703, product string "GE200".
+- Interface 0 = USB Audio, interface 3 = HID. No MIDI port.
+- HID interface: interrupt IN 0x81 + interrupt OUT, wMaxPacket 64, interval 10 ms.
+- Report descriptor: Generic Desktop, 64 x 8-bit Input + 64 x 8-bit Output, **no report ID**
+  (raw 64-byte reports).
+- The vendor editor opens the HID device with an overlapped read/write handle; the device path is passed
+  to it as its command-line argument by the vendor launcher [S].
+
+## Packet framing [S]
+```
+offset  0     1     2        3        4     5..LEN+3   LEN+4    LEN+5
+        0xAA  0x55  LEN_lo   LEN_hi   CMD   data...    CRC_hi   CRC_lo
+```
+- `LEN` counts payload bytes including `CMD`. Total packet size = `LEN + 6`.
+- CRC-16: polynomial 0x1021, init 0x0000, MSB-first, final XOR 0xFFFF, computed over
+  bytes `[2 .. LEN+3]` (the LEN field plus payload). Stored big-endian.
+- Packets larger than 64 bytes are presumably split across several 64-byte reports; the receive side
+  accumulates into a byte queue and scans for 0xAA [S, mechanism unverified].
+- Candidate hello packet: `AA 55 01 00 E0 35 E1` (CMD 0xE0, no data; CRC computed offline).
+
+## Host -> device command codes seen in the editor's sender loop [S]
+The editor runs a cyclic sender (state machine). Every builder copies a block of editor state into the
+packet **only if it differs from a cached copy** ("push on change"). So these are all *write/set*
+commands carrying payload, not read requests:
+
+| Group | CMD codes |
+|-------|-----------|
+| Hello / request (no payload) | 0xE0 |
+| Effect-module parameter blocks (len 5 seen) | 0x90 .. 0x9A |
+| Other state blocks | 0x82, 0x83 (0x200-byte block), 0x87, 0x89 |
+| Other state blocks | 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA6, 0xA8, 0xAA, 0xAB |
+| Other state blocks | 0xE1, 0xE2, 0xE4, 0xE5 |
+
+Cycle order: E0 -> 90..9A -> 82 -> A2 -> A0 -> A1 -> A3 -> A4 -> A6 -> A8 -> E1 -> E4 -> E5 -> 83 -> 87
+-> 89 -> E2 -> AA -> AB -> (back to 90).
+
+## Device -> host
+- A reader thread reads up to 0x2800 bytes and dispatches on `byte[4]` (CMD), handlers covering
+  0x81, 0x82, 0x85, 0x86, 0x89, 0x90-0x91, 0x93-0x99, 0xA0-0xA6, 0xA8-0xAB, 0xBB, 0xE1-0xE3, 0xE5 [S].
+  Other codes are ignored.
+- The code space is **symmetric**: most codes seen in the sender also appear in the receiver. A handler
+  parses the payload into the editor's state buffer **and also into the "last sent" cache**, so the editor
+  does not echo received state back to the device [S]. This suggests the device reports its state using
+  the same CMD codes (e.g. after hello), but this is an inference, not an observation.
+- Meaning of each code is not yet decoded.
+
+## HID report layout [V]
+Each 64-byte HID report (interrupt OUT 0x02 / interrupt IN 0x81, no report ID) is:
+```
+byte 0      chunk length N (1..63)
+byte 1..N   chunk data  (a slice of the packet stream below)
+rest        padding (ignore)
+```
+Packets longer than 63 bytes are split over several reports. The receiver concatenates the chunk
+data of all reports and scans the resulting byte stream for `AA 55` frames.
+Windows host note: the I/O buffer is 65 bytes (leading report-ID byte 0x00, then the 64-byte report).
+
+## Observed on the wire [V]
+- Hello: report `07 AA 55 01 00 E0 35 E1 00 ...` (so framing = length byte + frame).
+  The first attempt WITHOUT the length byte got no reply (device ignores it); with it, the device
+  immediately streams its whole state.
+- Idle: no unsolicited traffic, and turning knobs does not produce HID traffic before a hello was sent.
+- The reply to one hello (about 1.8k reports, ~105 KB of stream, finished in well under 1 s) was
+  219 frames, **all passing the CRC above**:
+
+| CMD | payload len (excl. CMD) | count | note |
+|-----|-------------------------|-------|------|
+| 0xA5 | 513 | 200 | one per preset: byte0 = preset index 0..199, then 512 bytes; name text near the start |
+| 0x84 | 16 | 1 | |
+| 0x85 | 150 | 1 | |
+| 0x86 | 512 | 1 | |
+| 0x89 | 1 | 1 | |
+| 0x90..0x99 | 12,10,-,16,12,10,22,14,16,12 | 1 each | (0x92 absent) per-module/global blocks |
+| 0xA1 / 0xA3 / 0xA4 / 0xA6 | 10 / 7 / 12 / 1 | 1 each | |
+| 0xBB | 2 | 1 | |
+| 0xE3 | 150 | 1 | |
+
+  (payload lengths here are counts after the CMD byte; the LEN field is that count + 1.)
+- Preset frame (CMD 0xA5): `A5 | idx | 01 02 03 04 05 06 07 08 09 (order table?) | ... | ASCII name ...`
+  Names seen look like normal tone names in upper case; exact field offsets still to be mapped.
+
+## Preset layout (CMD 0xA5 payload = `idx` + 512-byte preset) [V: derived from the 200-preset dump]
+Offsets below are inside the 512-byte preset (after the idx byte).
+
+| Offset | Size | Meaning |
+|--------|------|---------|
+| 0..8 | 9 | processing-chain order, a permutation of module numbers 1..9 |
+| 9 | 1 | always 0 in the dump |
+| 10 | 1 | 0x64 in the examples (a level-like value, meaning unconfirmed) |
+| 12..27 | 16 | preset name, ASCII, NUL padded |
+| 28..33 | 6 | module block for state CMD 0x90 |
+| 36..40 | 5 | module block for state CMD 0x91 |
+| 44..51 | 8 | module block for state CMD 0x93 |
+| 52..57 | 6 | module block for state CMD 0x94 |
+| 60..64 | 5 | module block for state CMD 0x95 |
+| 68..75 | 8 | first part of the block for state CMD 0x96 |
+| 76..81 | 6 | block for state CMD 0x97 (apart from its last 16-bit value) |
+| 92..97 | 6 | block for state CMD 0x99 |
+| ~325..352 | | little-endian 16-bit values (e.g. 0x0064, 0x0258, 0x04E2, 0x00DF, 0x0028, 0x00C8): the "wide" values of blocks 0x96-0x98 |
+| rest | | mostly zero in the dump |
+
+Each state block (CMD 0x90..0x99) in the dump is a list of 16-bit big-endian values; the **low
+bytes equal the preset bytes with the first two values swapped** (0x90: state `00 01 32 32 32 32`
+vs preset `01 00 32 32 32 32`). That mapping holds for 0x90, 0x91, 0x93, 0x94, 0x95 and 0x99 exactly.
+What each module is (names, enable flag vs type id, parameter meanings) is **not yet decoded**.
+
+## Module identification [V statistically + names from the editor's UI tables; ids/order inferred]
+In the preset, a module block is `[type (1-based), enable (0/1), params...]`. The state frames carry
+`[enable, type, params...]` (first two swapped). Evidence = value ranges across all 200 presets vs. the
+number of entries in the editor's model-name tables:
+
+| Preset offset | State CMD | Module | type range seen | params (value range seen) |
+|---|---|---|---|---|
+| 28 | 0x90 | FX (wah / compressor family) | 1..8 (8 models) | 4 x 0..100 |
+| 36 | 0x91 | DS / OD | 1..20 (20 models) | 3 x 0..100 (gain/tone/level-like) |
+| 44 | 0x93 | AMP | 1..65 (about 57 amps + 10 "EMPTY" user slots) | 6 x 0..100 (gain, bass, mid, treble, presence, master-like) |
+| 52 | 0x94 | CAB | 1..35 (cab models + 10 IR slots) | mic 0..9 (10 mic models), distance-like 0..66, level-like 0..94, power-tube type 0..4 (off + 4 types) |
+| 60 | 0x95 | NS (noise suppressor) | 1..3 (3 models) | 3 params |
+| 68 | 0x96 | EQ | 1..4 (4 EQ types) | 6 band gains (0..24, 10 = flat-ish) + 3 wide 16-bit values (100, 600, 1250 in the sample = band frequencies) |
+| 76 | 0x97 | MOD | 1..20 (20 models: phaser, flanger, chorus, ...) | 4 params + 1 wide 16-bit value |
+| 84 | 0x98 | DELAY | 1..9 (9 delay types) | values at 86..91, time (ms) is a wide 16-bit value |
+| 92 | 0x99 | REVERB | 1..7 (7 reverb types) | 4 params |
+
+- The chain-order table at offsets 0..8 is a permutation of 1..9; the module ids are assumed to follow
+  the block order above (1=FX ... 9=REVERB) -- assumption, not verified.
+- State CMD 0x92 was not present in the dump; its role is unknown.
+- Bytes 104..126 are mostly 0/1 flags (probably footswitch/EXP/control assignments, "CTRL" tab of the
+  editor); bytes 128..136 hold a few more small values. Not decoded.
+- Preset volume ("PRESET VOL" in the editor) is most likely the 0x64 at offset 10; unconfirmed.
+
+## Other frames in the hello reply [V content, meaning inferred]
+- 0x84: ASCII `2.0.4` + `MOOER_GE200` (firmware version + device name).
+- 0x85 and 0xE3: 150 bytes each = ten 15-byte NUL/space-padded ASCII names (cabinet/IR style names);
+  they look like lookup tables for the cabinet/IR selection.
+- 0x86: 512 bytes, byte-for-byte equal to the stored preset of the active slot -> the **working copy**.
+- 0xA6: 1 byte -> the index of the active preset.
+- 0x89, 0xBB, 0xA1, 0xA3, 0xA4: small state blocks, not decoded.
+
+## Writing module state (live edit) [V on the device, 2026-11-10]
+- Host -> device `CMD 0x90..0x99` with the same payload layout the device reports (16-bit big-endian
+  values `[enable, type, params...]`, 0x91 = 5 values) edits the **live state**. Example (DS/OD block, 0x91):
+  `AA 55 0B 00 91 | 00 01 | 00 09 | 00 50 | 00 46 | 00 24 | 21 E8`.
+- Sending the device's own reported values back is a no-op and gets **no reply/ack** (3 s listened).
+- Test: switching the DS block off (`enable` 1 -> 0) was reflected immediately in the next hello reply:
+  the 0x91 state frame and the live-buffer frame 0x86 changed, the stored preset (CMD 0xA5, same index)
+  did **not**. Writing the original values back restored everything (verified by re-reading).
+- So: these commands edit a working copy; persisting to a preset slot needs another command (not yet known;
+  candidate: the 0x200-byte block sent by the editor's state 0x83 builder).
+
+## Selecting a preset and loading a whole preset [V on the device, 2026-11-10]
+- **Select preset**: host -> device `CMD 0xA6` + 1 byte (index). Example `AA 55 02 00 A6 A3 20 C6` selected
+  preset 163. Verified by re-reading: the active-preset frame (0xA6) and the live buffer (0x86) followed,
+  no stored preset changed, selecting the original index again restored everything. No ack frame.
+- **Load whole live preset**: host -> device `CMD 0x83` + 512 bytes (a full preset image, no slot index).
+  Verified on slot 199 (an "EMPTY" slot): after sending an image with one parameter changed, the **live buffer
+  (0x86) equalled the sent image** while the **stored preset (CMD 0xA5 for that slot) was unchanged**. So 0x83
+  edits the working copy, it does not save. (The vendor editor also overwrites the name field of this payload
+  with the slot's existing name, so the name is probably not changeable this way.)
+- **Write a preset into a slot**: host -> device `CMD 0xE5` + `[slot index][512-byte preset]` (the same layout
+  as the device's own `0xA5` dump frame, LEN = 514). Found by static analysis of the editor's preset-import
+  path (it parses the slot number from a preset file name and sends it followed by the 512 file bytes).
+  Verified on slot 199: after sending an image with one parameter changed, the **stored preset** (CMD 0xA5 for
+  that slot) equalled the sent image (byte 38: 50 -> 57); all other slots and the active preset were unchanged.
+  Writing the original image back restored all 200 presets byte for byte. No ack frame.
+- The editor's sender also uses 0xE0, 0x82, 0xA0-0xA4, 0xA8, 0xAA, 0xAB, 0xE1, 0xE2, 0xE4, 0x87, 0x89
+  (0xA0 = the 9-byte chain order); these are not decoded yet.
+
+## Timing and robustness notes [V on the device, 2026-11-10]
+- The reply to a hello is **paced by the device**: about 8 ms per 64-byte report, ~12 presets per second, so a
+  full state dump takes **about 16 s** (1831 reports). It cannot be requested in parts (no partial request known).
+- Do not write while the device is streaming that dump. A write frame that collides with the dump can lose a
+  report; the device's input parser then waits for the rest of the truncated frame and **ignores every later
+  command, including hello**, until it has swallowed enough bytes. Recovery that worked: send ~11 chunks of
+  63 zero bytes (`3F 00 ...` reports), then hello again. Writes are harmless again afterwards.
+- A hello sent while a dump is still running restarts the dump (works, as long as nothing else is written).
+- The device sends nothing unsolicited (no notification when a preset is changed on the unit itself): a host
+  that wants to know the active preset has to ask with a hello (16 s).
+
+## Editor start-up behaviour [S, partly confirmed by wire test]
+- On start the sender state is initialised to 0xE0, so the hello is the editor's first packet; the
+  device answers it with the full dump (confirmed above).
+
+## Open questions
+1. Does the device answer 0xE0 by streaming its current state (read-only dump)? Unknown.
+2. Meaning/layout of each CMD's payload (parameter ids, preset number, name encoding).
+3. Which codes are safe read requests vs. state writes. Until known: **no host -> device traffic**
+   other than what is explicitly approved by the device owner.
+
+## Safety
+- Launching the vendor editor may push default/UI state to the device (push-on-change against an
+  unknown initial cache) -- do not launch it against the device without a full backup.
+- Never run the vendor launcher/updater (firmware flashing).

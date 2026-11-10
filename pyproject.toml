@@ -1,0 +1,19 @@
+[project]
+name = "ge200"
+version = "0.1.0"
+description = "Unofficial, read-only Python access to the Mooer GE200 (Windows, stdlib only)"
+requires-python = ">=3.9"
+readme = "README.md"
+
+[project.scripts]
+ge200 = "ge200.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ge200", "ge200.web"]
+
+[tool.setuptools.package-data]
+"ge200.web" = ["static/*.html"]

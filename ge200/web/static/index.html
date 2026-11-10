@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ge200-token" content="__TOKEN__">
+<title>GE200 editor</title>
+<style>
+  :root { --bg:#f6f6f4; --panel:#fff; --ink:#1d1d1b; --mute:#6b6b66; --line:#dcdcd6; --accent:#c2410c; --accent-ink:#fff; --ok:#15803d; --bad:#b91c1c; --chip:#efefea; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161614; --panel:#201f1d; --ink:#ececE6; --mute:#9a9a92; --line:#34332f; --accent:#f97316; --accent-ink:#1a1008; --chip:#2a2926; --ok:#4ade80; --bad:#f87171; } }
+  :root[data-theme="dark"] { --bg:#161614; --panel:#201f1d; --ink:#ececE6; --mute:#9a9a92; --line:#34332f; --accent:#f97316; --accent-ink:#1a1008; --chip:#2a2926; --ok:#4ade80; --bad:#f87171; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; gap:12px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .meta { color:var(--mute); font-size:12px; }
+  header .spacer { flex:1; }
+  button { font:inherit; padding:6px 12px; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:6px; cursor:pointer; }
+  button:hover { border-color:var(--mute); }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  main { display:grid; grid-template-columns: 260px 1fr; gap:16px; padding:16px; max-width:1200px; margin:0 auto; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } #list { max-height:240px; } }
+  aside, section { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  aside { display:flex; flex-direction:column; min-height:0; }
+  aside input { margin:10px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
+  #list { overflow:auto; max-height:calc(100vh - 150px); }
+  .row { display:flex; gap:8px; padding:6px 12px; cursor:pointer; border-top:1px solid var(--line); }
+  .row:hover { background:var(--chip); }
+  .row.sel { background:var(--chip); box-shadow: inset 3px 0 0 var(--accent); }
+  .row .n { width:32px; color:var(--mute); font-variant-numeric: tabular-nums; }
+  .row .act { color:var(--accent); font-weight:700; }
+  section { padding:14px 16px; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .bar input[type=text] { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font-weight:600; width:200px; }
+  .chain { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .chip { background:var(--chip); border:1px solid var(--line); border-radius:999px; padding:2px 4px 2px 10px; display:flex; gap:2px; align-items:center; font-size:12px; }
+  .chip button { padding:0 6px; border:none; background:none; color:var(--mute); }
+  .chip button:hover { color:var(--ink); }
+  .cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card.off { opacity:.55; }
+  .card h3 { margin:0 0 8px; font-size:13px; display:flex; gap:8px; align-items:center; }
+  .card h3 .sp { flex:1; }
+  .card select, .card input[type=number] { padding:3px 4px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); max-width:170px; }
+  .param { display:grid; grid-template-columns: 52px 1fr 52px; gap:8px; align-items:center; margin:4px 0; font-size:12px; color:var(--mute); }
+  .param input[type=range] { width:100%; accent-color: var(--accent); }
+  .param input[type=number] { width:52px; }
+  #status { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:8px 14px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
+  #status.show { opacity:.95; } #status.err { background:var(--bad); color:#fff; }
+  .note { color:var(--mute); font-size:12px; margin-top:12px; }
+  label.inl { display:flex; gap:6px; align-items:center; color:var(--mute); font-size:12px; }
+  .dirty { color:var(--accent); font-size:12px; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GE200 editor</h1>
+  <span class="meta" id="meta">connecting...</span>
+  <span class="spacer"></span>
+  <button id="refresh" title="Read everything from the device again">Refresh</button>
+  <button id="backup" title="Save a full JSON backup now">Backup now</button>
+</header>
+<main>
+  <aside>
+    <input id="search" placeholder="Search presets" autocomplete="off">
+    <div id="list"></div>
+  </aside>
+  <section id="editor"><p class="note">Pick a preset on the left.</p></section>
+</main>
+<div id="status"></div>
+<script>
+"use strict";
+const TOKEN = document.querySelector('meta[name="ge200-token"]').content;
+const MODULES = [
+  ["fx","FX / Wah / Comp"],["ds","Drive"],["amp","Amp"],["cab","Cab / IR"],["ns","Noise"],
+  ["eq","EQ"],["mod","Modulation"],["delay","Delay"],["reverb","Reverb"]];
+const MOD_LABEL = Object.fromEntries(MODULES);
+let S = null;            // server state
+let cur = null;          // {slot, stored, edit}
+let timer = null;
+// Bumped whenever the UI moves to another preset; the server drops updates with an older epoch. It starts from the
+// clock so a freshly loaded page always outranks an older page / earlier run.
+let epoch = Date.now();
+
+const $ = (s, r = document) => r.querySelector(s);
+function toast(msg, err = false) {
+  const el = $("#status"); el.textContent = msg; el.className = "show" + (err ? " err" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", err ? 5000 : 2200);
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-GE200-Token": TOKEN }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const clone = o => JSON.parse(JSON.stringify(o));
+function editFrom(p) {
+  const modules = {};
+  for (const [k, m] of Object.entries(p.modules)) modules[k] = { type: m.type, enabled: m.enabled, params: m.params.slice() };
+  return { name: p.name, chain_order: p.chain_order.slice(), modules };
+}
+const isDirty = () => cur && JSON.stringify(cur.edit) !== JSON.stringify(editFrom(cur.stored));
+
+async function loadState() {
+  S = await api("/api/state");
+  $("#meta").textContent = `firmware ${S.firmware || "?"} · ${S.presets.length} presets · active ${S.active}` + (S.backed_up ? " · backup saved" : "");
+  renderList();
+}
+function renderList() {
+  const q = $("#search").value.trim().toLowerCase();
+  const box = $("#list"); box.textContent = "";
+  for (const p of S.presets) {
+    if (q && !(p.name.toLowerCase().includes(q) || String(p.index) === q)) continue;
+    const d = document.createElement("div");
+    d.className = "row" + (cur && cur.slot === p.index ? " sel" : "");
+    d.innerHTML = `<span class="n">${p.index}</span><span class="act">${p.index === S.active ? "●" : ""}</span><span></span>`;
+    d.lastChild.textContent = p.name || "(no name)";
+    d.onclick = () => openPreset(p.index);
+    box.appendChild(d);
+  }
+}
+async function openPreset(slot) {
+  if (isDirty() && !confirm("Discard unsaved edits?")) return;
+  clearTimeout(timer); const my = ++epoch;            // anything still pending belongs to the old preset
+  const stored = await api("/api/preset/" + slot);
+  if (my !== epoch) return;                            // user clicked another preset meanwhile
+  cur = { slot, stored, edit: editFrom(stored) };
+  renderList(); renderEditor();
+  try {
+    const r = await api("/api/select", { slot, epoch: my });
+    if (my !== epoch || r.dropped) return;
+    S.active = slot; $("#meta").textContent = $("#meta").textContent.replace(/active \d+/, "active " + slot); renderList();
+  } catch (e) { toast(e.message, true); }
+}
+function scheduleLive() {
+  updateDirty();
+  if (!$("#audition") || !$("#audition").checked) return;
+  clearTimeout(timer);
+  const my = epoch, slot = cur.slot;
+  timer = setTimeout(async () => {
+    if (my !== epoch) return;
+    try {
+      const r = await api("/api/live", { slot, edit: cur.edit, epoch: my });
+      if (r.error) toast("Device: " + r.error, true);
+    } catch (e) { toast(e.message, true); }
+  }, 150);
+}
+let verifyTimer = null;
+function pollVerify() {
+  clearInterval(verifyTimer);
+  verifyTimer = setInterval(async () => {
+    try {
+      const s = await api("/api/status");
+      if (s.verify.state === "pending") return;
+      clearInterval(verifyTimer);
+      if (s.verify.state === "ok") toast(`Slot ${s.verify.slot} verified on the device`);
+      else toast(`Slot ${s.verify.slot}: read-back differs from what was saved!`, true);
+    } catch (e) { clearInterval(verifyTimer); toast(e.message, true); }
+  }, 1500);
+}
+function updateDirty() { const d = $("#dirty"); if (d) d.textContent = isDirty() ? "● unsaved changes" : ""; }
+
+function renderEditor() {
+  const ed = $("#editor"); ed.textContent = "";
+  const e = cur.edit;
+  const bar = document.createElement("div"); bar.className = "bar";
+  bar.innerHTML = `<span style="color:var(--mute)">#${cur.slot}</span>
+    <input type="text" id="name" maxlength="16" spellcheck="false">
+    <label class="inl"><input type="checkbox" id="audition" checked> live audition</label>
+    <span class="dirty" id="dirty"></span><span style="flex:1"></span>
+    <button id="revert">Revert</button><button id="save" class="primary">Save to slot ${cur.slot}</button>`;
+  ed.appendChild(bar);
+  $("#name").value = e.name;
+  $("#name").oninput = ev => { e.name = ev.target.value; scheduleLive(); };
+  $("#revert").onclick = async () => {
+    clearTimeout(timer); const my = ++epoch;
+    cur.edit = editFrom(cur.stored); renderEditor();
+    try { await api("/api/revert", { slot: cur.slot, epoch: my }); toast("Reverted to the stored preset"); } catch (err) { toast(err.message, true); }
+  };
+  $("#save").onclick = async () => {
+    if (!confirm(`Overwrite slot ${cur.slot} on the device?` + (S.backed_up ? "" : "\n\nA full backup is saved first."))) return;
+    clearTimeout(timer);
+    try {
+      const r = await api("/api/save", { slot: cur.slot, edit: cur.edit });
+      cur.stored = r.preset; cur.edit = editFrom(r.preset);
+      await loadState(); renderEditor();
+      if (r.ok === null && r.pending) { toast("Saved. Verifying..."); pollVerify(); }
+      else if (r.ok === null) toast("Saved to slot " + cur.slot + ". (Press Refresh to re-read the whole device and verify.)");
+      else toast(r.ok ? "Saved and verified on the device" : "Saved, but read-back differs!", !r.ok);
+    } catch (err) { toast(err.message, true); }
+  };
+  // chain order
+  const chain = document.createElement("div"); chain.className = "chain"; ed.appendChild(chain);
+  const drawChain = () => {
+    chain.textContent = "";
+    e.chain_order.forEach((id, i) => {
+      const c = document.createElement("span"); c.className = "chip";
+      c.append(`${MODULES[id - 1][1]} `);
+      const l = document.createElement("button"); l.textContent = "◀"; l.disabled = i === 0;
+      const r = document.createElement("button"); r.textContent = "▶"; r.disabled = i === 8;
+      const mv = d => { [e.chain_order[i], e.chain_order[i + d]] = [e.chain_order[i + d], e.chain_order[i]]; drawChain(); scheduleLive(); };
+      l.onclick = () => mv(-1); r.onclick = () => mv(1);
+      c.append(l, r); chain.appendChild(c);
+    });
+  };
+  drawChain();
+  // modules
+  const cards = document.createElement("div"); cards.className = "cards"; ed.appendChild(cards);
+  for (const [key, label] of MODULES) {
+    const m = e.modules[key], rg = S.ranges[key], tbl = S.names[key];
+    const card = document.createElement("div"); card.className = "card" + (m.enabled ? "" : " off");
+    const h = document.createElement("h3");
+    const on = document.createElement("input"); on.type = "checkbox"; on.checked = m.enabled;
+    on.onchange = () => { m.enabled = on.checked; card.classList.toggle("off", !m.enabled); scheduleLive(); };
+    h.append(on, label);
+    const sp = document.createElement("span"); sp.className = "sp"; h.appendChild(sp);
+    let typeEl;
+    if (tbl && tbl.length) {
+      typeEl = document.createElement("select");
+      tbl.forEach((n, i) => typeEl.add(new Option(`${i + 1}  ${n}`, i + 1)));
+      if (m.type > tbl.length) typeEl.add(new Option(`${m.type}  (unknown)`, m.type));
+      typeEl.value = m.type;
+    } else {
+      typeEl = document.createElement("input"); typeEl.type = "number"; typeEl.min = 1; typeEl.max = Math.max(rg.type[1], m.type); typeEl.value = m.type; typeEl.style.width = "60px";
+    }
+    typeEl.onchange = () => { m.type = parseInt(typeEl.value, 10) || 1; scheduleLive(); };
+    h.appendChild(typeEl); card.appendChild(h);
+    m.params.forEach((v, i) => {
+      const max = Math.max(100, rg.params[i][1], v);
+      const row = document.createElement("div"); row.className = "param";
+      const name = document.createElement("span"); name.textContent = "P" + (i + 1); name.title = `observed range in your presets: ${rg.params[i][0]}–${rg.params[i][1]}`;
+      const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = max; sl.value = v;
+      const nm = document.createElement("input"); nm.type = "number"; nm.min = 0; nm.max = 255; nm.value = v;
+      const set = x => { x = Math.max(0, Math.min(255, parseInt(x, 10) || 0)); m.params[i] = x; sl.value = x; nm.value = x; scheduleLive(); };
+      sl.oninput = () => set(sl.value); nm.onchange = () => set(nm.value);
+      row.append(name, sl, nm); card.appendChild(row);
+    });
+    cards.appendChild(card);
+  }
+  const n = document.createElement("p"); n.className = "note";
+  n.textContent = "Parameter meanings are not decoded yet (P1..Pn are the raw bytes in order). Chain-order labels assume module ids follow the card order. Live audition changes the working copy only; nothing is stored until you press Save.";
+  ed.appendChild(n);
+  updateDirty();
+}
+$("#search").oninput = () => S && renderList();
+$("#refresh").onclick = async () => {
+  const b = $("#refresh"); b.disabled = true; toast("Reading all presets from the device (about 16 s)...");
+  try { clearTimeout(timer); S = await api("/api/refresh", { epoch: ++epoch }); cur = null; $("#editor").innerHTML = '<p class="note">Pick a preset on the left.</p>'; await loadState(); toast("Refreshed from the device"); }
+  catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; }
+};
+$("#backup").onclick = async () => { try { const r = await api("/api/backup", {}); toast("Backup written: " + r.path); await loadState(); } catch (e) { toast(e.message, true); } };
+window.addEventListener("beforeunload", ev => { if (isDirty()) { ev.preventDefault(); ev.returnValue = ""; } });
+loadState().catch(e => { $("#meta").textContent = "error: " + e.message; });
+</script>
+</body>
+</html>
