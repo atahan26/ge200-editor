@@ -78,6 +78,14 @@ Each hosted request costs a few cents; the Claude provider marks the stable part
 repo; override with `GE200_RIG`). It is added to the tone generator's prompt so tones fit *your* setup. Parameter
 meanings with confidence levels live in `ge200/params.py` (sliders show the label, an italic `?` marks guesses).
 
+## Your own impulse responses (IRs)
+The unit has 10 places for your own cabinet IRs (they appear as *IR slot 1 to 10* in a Cab module). The editor's **IRs**
+tab takes a WAV/FLAC/AIFF file (drop it, choose it, or pick one from the `--ir-dir` folder), shows what will be sent
+(512 samples at 44.1 kHz, the end faded out), lets you name it and pick a slot, and uploads it. The IR that was in the
+slot is replaced and the unit cannot give it back; the page sends the name it showed for that slot, so a stale page
+can never overwrite a different IR. Needs numpy, scipy and soundfile (`pip install .[audio]`). Command line:
+`python -m ge200 ir-upload SLOT file.wav --name NAME --write`.
+
 ## NAM lab (second engine)
 NAM (Neural Amp Modeler) captures run in a **separate environment** (`.venv-nam`: PyTorch + neural-amp-modeler), so the
 main environment stays light. Start the editor with your folders and use the **NAM lab** tab to render a DI recording

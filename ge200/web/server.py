@@ -26,6 +26,7 @@ from .. import params as param_info
 from .. import protocol as p
 from .. import rig as rig_mod
 from .. import llm, tone
+from .irlab import IrError
 from ..client import Ge200, Snapshot, load_raw
 from ..preset import EditError, Preset, apply_edit, param_ranges
 
@@ -68,6 +69,9 @@ class MemoryBackend:
     def write_slot(self, slot: int, raw: bytes) -> None:
         self.presets[slot] = raw
         self.log.append(f"write {slot}")
+
+    def write_ir(self, slot: int, samples, name: str) -> None:
+        self.log.append(f"ir {slot} {name}")
 
     def close(self) -> None:
         pass
@@ -219,6 +223,10 @@ class DeviceBackend:
         self._wait_idle()
         self._run(lambda d: d.load_live(raw, settle_s=0.05))
 
+    def write_ir(self, slot: int, samples, name: str) -> None:
+        self._wait_idle()
+        self._run(lambda d: d.write_ir(slot, samples, name))
+
     def write_slot(self, slot: int, raw: bytes) -> None:
         self._wait_idle()
         self._run(lambda d: d.write_slot(slot, raw, settle_s=1.0))
@@ -227,8 +235,11 @@ class DeviceBackend:
 
 
 class App:
-    def __init__(self, backend, names=None, backup_dir: Optional[str] = None, rig_path=None, nam=None) -> None:
+    def __init__(self, backend, names=None, backup_dir: Optional[str] = None, rig_path=None, nam=None, irlab=None) -> None:
         self.nam = nam                                              # NamLab or None
+        from .irlab import IrLab
+        self.irlab = irlab or IrLab(None)                           # IR import tools (browser uploads work without a folder)
+        self.ir_names_cache: Optional[list] = None                  # names after an upload, until the next full read
         self.backend, self.names = backend, names or {}
         self.backup_dir = backup_dir
         self.rig_path = Path(rig_path) if rig_path else None        # None = keep the rig in memory only
@@ -260,6 +271,7 @@ class App:
             t0 = time.time()
             self.backend.refresh(wait=wait)
             self.snap = self.backend.snapshot()
+            self.ir_names_cache = None
             if wait and not self.snap.presets:
                 raise RuntimeError("the device returned no presets")
             self.live_slot = self.snap.active_index
@@ -291,6 +303,8 @@ class App:
 
     def _ir_names(self) -> list:
         """Names of the ten user IR slots (cab models 27..36), from the device's name table 0x85 [verified by upload]."""
+        if self.ir_names_cache is not None:
+            return list(self.ir_names_cache)
         try:
             return list(self.snap.name_tables().get(0x85, []))[:10]
         except Exception:
@@ -440,6 +454,42 @@ class App:
             return {"ok": {"ok": True, "mismatch": False}.get(st["state"]), "pending": st["state"] == "pending",
                     "preset": self.snap.presets[slot].to_dict(self.names)}
 
+    # ----- impulse responses -----
+    def ir_info(self) -> dict:
+        from . import irlab as _ir
+        return {"slots": self._ir_names(), "files": self.irlab.files(), "folder": self.irlab.ir_dir,
+                "max_mb": _ir.MAX_BYTES // (1024 * 1024), **self.irlab.available()}
+
+    def ir_preview(self, body: dict) -> dict:
+        _y, info = self.irlab.convert(body.get("file") or None, body.get("data") or None, str(body.get("filename", "")),
+                                      bool(body.get("normalize")))
+        return info
+
+    def ir_upload(self, body: dict) -> dict:
+        """Replace one of the ten user IR slots. The old IR cannot be read back from the unit, so the page must send the
+        name it showed for that slot (``replace``): a stale page can never overwrite a different IR than the user saw."""
+        from .. import ir as _ir
+        slot = body.get("slot")
+        if not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot < _ir.IR_SLOTS:
+            raise EditError(f"IR slot must be 0..{_ir.IR_SLOTS - 1}")
+        name_in = body.get("name")
+        if not isinstance(name_in, str) or not name_in.strip():
+            raise EditError("give the IR a name (up to 15 characters)")
+        y, info = self.irlab.convert(body.get("file") or None, body.get("data") or None, str(body.get("filename", "")),
+                                     bool(body.get("normalize")))
+        with self.lock:
+            names = self._ir_names() + [""] * _ir.IR_SLOTS
+            if body.get("replace") != names[slot]:
+                raise EditError(f"IR slot {slot + 1} now holds '{names[slot]}': reload the IR page and check again")
+            clean = _ir.clean_name(name_in).split(bytes(1))[0].decode("ascii").strip()
+            self._log(f"IR upload to slot {slot + 1} ('{clean}', replaces '{names[slot]}', {info['label']})")
+            self.backend.write_ir(slot, y, clean)
+            self.last_op = time.time()
+            names = names[:_ir.IR_SLOTS]
+            names[slot] = clean
+            self.ir_names_cache = names
+            return {"slots": names, "name": clean, "slot": slot}
+
     def verify_status(self) -> dict:
         v = self.verify
         if not v:
@@ -501,6 +551,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, self.app.nam.audio(self.path.rsplit("/", 1)[1]), "audio/wav")
                 except KeyError:
                     return self._json(404, {"error": "no such render"})
+            if self.path == "/api/ir":
+                return self._json(200, self.app.ir_info())
             if self.path == "/api/status":
                 return self._json(200, {"verify": self.app.verify_status(), "error": self.app.last_error,
                                         "reader_error": getattr(self.app.backend, "error", None)})
@@ -520,12 +572,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "bad token"})
         try:
             n = int(self.headers.get("Content-Length", "0"))
-            if n > 100_000:
+            if n > (12 * 1024 * 1024 if self.path.startswith("/api/ir/") else 100_000):
                 return self._json(413, {"error": "too large"})
             body = json.loads(self.rfile.read(n) or b"{}")
             slot = body.get("slot")
             if self.path == "/api/rig":
                 return self._json(200, {"rig": self.app.set_rig(body.get("rig"))})
+            if self.path == "/api/ir/preview":
+                return self._json(200, self.app.ir_preview(body))
+            if self.path == "/api/ir/upload":
+                return self._json(200, self.app.ir_upload(body))
             if self.path == "/api/llm/models":
                 pid = body.get("provider")
                 if not isinstance(pid, str) or not pid.isalnum():
@@ -573,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.app.tone(slot, desc, edit or None, body.get("guitar"),
                                                          body.get("provider") or None, body.get("model") or None))
             self._json(404, {"error": "not found"})
-        except (EditError, ValueError, KeyError, json.JSONDecodeError, tone.ToneError, llm.LlmError, rig_mod.RigError) as e:
+        except (EditError, ValueError, KeyError, json.JSONDecodeError, tone.ToneError, llm.LlmError, rig_mod.RigError, IrError) as e:
             self._json(400, {"error": str(e)})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
@@ -608,7 +664,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         from .namlab import NamLab
         py = args.nam_python or str(Path(__file__).resolve().parents[2] / ".venv-nam" / "Scripts" / "python.exe")
         nam = NamLab(args.nam_dir, args.ir_dir, args.di_dir, py)
-    app = App(backend, names, args.backup_dir, rig_mod.default_path(), nam)
+    from .irlab import IrLab
+    app = App(backend, names, args.backup_dir, rig_mod.default_path(), nam, IrLab(args.ir_dir))
     srv = make_server(app, args.port)
     print(f"GE200 editor on http://127.0.0.1:{srv.server_address[1]}/  ({'DEMO, in memory' if args.demo_raw else 'device'})",
           flush=True)

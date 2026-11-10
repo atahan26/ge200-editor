@@ -209,6 +209,26 @@
   #status { position: fixed; bottom: 16px; left: 50%; transform: translate(-50%, 8px); background: #fff; color: var(--ink); padding: 9px 16px; border-radius: 6px; opacity: 0;
             transition: opacity .15s, transform .15s; pointer-events: none; max-width: 90vw; box-shadow: 0 8px 30px #000a; z-index: 40; border-left: 4px solid var(--good); }
   #status.show { opacity: 1; transform: translate(-50%, 0); } #status.err { border-left-color: var(--bad); }
+  /* IR page */
+  .irgrid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
+  @media (max-width: 900px) { .irgrid { grid-template-columns: 1fr; } }
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; color: var(--mute); background: #fff; }
+  .drop.over { border-color: var(--amber); background: #fff8e8; }
+  .drop b { color: var(--ink); }
+  #ir-wave { width: 100%; height: 150px; display: block; background: #12161a; border-radius: 6px; margin-top: 12px; }
+  .irfacts { font-size: 12px; color: var(--mute); margin-top: 8px; min-height: 2.8em; }
+  .irfacts b { color: var(--ink); }
+  .slots { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+  .slots label { display: flex; gap: 10px; align-items: center; padding: 7px 12px; border-bottom: 1px solid #0000000d; cursor: pointer; font-size: 13px; color: var(--ink); }
+  .slots label:last-child { border-bottom: 0; }
+  .slots label:hover { background: var(--paper-2); }
+  .slots label.on { background: #fff3d6; box-shadow: inset 4px 0 0 var(--amber); font-weight: 600; }
+  .slots .no { width: 54px; color: var(--mute); font: 12px var(--hw); flex: none; }
+  .slots .nm { flex: 1; font-family: var(--hw); letter-spacing: .02em; }
+  .irform { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-top: 12px; }
+  .irform label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--mute); }
+  .irform input[type=text], .irform select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  .irform .chk { flex-direction: row; align-items: center; gap: 6px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -220,7 +240,7 @@
 </defs></svg>
 <header class="top">
   <div class="brand">GE200</div>
-  <nav class="tabs"><button id="tab-presets" class="on">Presets</button><button id="tab-nam">NAM lab</button></nav>
+  <nav class="tabs"><button id="tab-presets" class="on">Presets</button><button id="tab-ir">IRs</button><button id="tab-nam">NAM lab</button></nav>
   <dl class="stat" id="meta"><div><dt>Status</dt><dd>connecting</dd></div></dl>
   <span class="spacer"></span>
   <button class="btn" id="rig" title="Your guitars, pickups and taste: used by the tone generator">My rig</button>
@@ -250,6 +270,29 @@
     <div class="bar2"><button id="nam-render" class="btn go">Render</button><span id="nam-info" class="note" style="margin:0"></span></div>
     <audio id="nam-audio" controls style="width:100%;margin-top:12px" hidden></audio>
     <div id="nam-meta" class="note"></div>
+  </section>
+</main>
+<main class="work" id="irlab" hidden style="display:block">
+  <section class="panel">
+    <h2>Your impulse responses</h2>
+    <p class="note" style="margin-top:0">The unit has 10 places for your own cabinet impulse responses. In a preset's Cab module they appear as <b>IR slot 1 to 10</b>. Choose a file, check the preview, pick a slot and upload. The IR that was in that slot is replaced, and the unit cannot give it back, so keep the original file if you want it.</p>
+    <div id="irstate" class="note"></div>
+    <div class="irgrid">
+      <div>
+        <div class="drop" id="ir-drop"><b>Drop an IR file here</b> (WAV, FLAC or AIFF)<br>or <button class="btn" id="ir-pick" type="button">Choose a file</button><input type="file" id="ir-file" accept=".wav,.flac,.aif,.aiff,audio/*" hidden></div>
+        <div class="irform" id="ir-folderrow" hidden><label style="flex:1">Or pick one from your IR folder<select id="ir-folder"></select></label></div>
+        <canvas id="ir-wave" width="720" height="150" aria-label="Preview of the converted impulse response"></canvas>
+        <div class="irfacts" id="ir-facts">No file chosen yet.</div>
+        <div class="irform">
+          <label>Name on the unit (15 characters)<input type="text" id="ir-name" maxlength="15" spellcheck="false"></label>
+          <label class="chk"><input type="checkbox" id="ir-norm"> Raise the level so the peak is 0.9</label>
+        </div>
+      </div>
+      <div>
+        <div class="slots" id="ir-slots" role="radiogroup" aria-label="IR slot to replace"></div>
+        <div class="bar2"><button class="btn go" id="ir-upload" disabled>Upload</button></div>
+      </div>
+    </div>
   </section>
 </main>
 <dialog id="rigdlg"><form method="dialog" id="rigform">
@@ -753,13 +796,101 @@ $("#aisave").onclick = async () => {
 // ---------------------------------------------------------------- tabs and the NAM lab
 let NAM = null;
 function showTab(which) {
-  const nam = which === "nam";
-  $("#presets").hidden = nam; $("#namlab").hidden = !nam;
-  $("#tab-presets").classList.toggle("on", !nam); $("#tab-nam").classList.toggle("on", nam);
-  if (nam) loadNam(); else layoutCables();
+  const pages = { presets: "#presets", ir: "#irlab", nam: "#namlab" };
+  for (const [k, sel] of Object.entries(pages)) { $(sel).hidden = k !== which; $("#tab-" + k).classList.toggle("on", k === which); }
+  if (which === "nam") loadNam(); else if (which === "ir") loadIr(); else layoutCables();
 }
 $("#tab-presets").onclick = () => showTab("presets");
+$("#tab-ir").onclick = () => showTab("ir");
 $("#tab-nam").onclick = () => showTab("nam");
+
+// ---------------------------------------------------------------- IR page
+let IR = null, irSource = null, irPreview = null, irSlot = 9, irNameTouched = false;
+const MB = 1024 * 1024;
+async function loadIr() {
+  try { IR = await api("/api/ir"); } catch (e) { toast(e.message, true); return; }
+  const st = $("#irstate");
+  st.textContent = IR.available ? "" : "IR tools unavailable: " + IR.reason;
+  const fr = $("#ir-folderrow"), sel = $("#ir-folder");
+  fr.hidden = !IR.files.length; sel.textContent = ""; sel.add(new Option("(choose)", ""));
+  IR.files.forEach(f => sel.add(new Option(f, f)));
+  renderIrSlots(); updateIrButton();
+}
+function renderIrSlots() {
+  const box = $("#ir-slots"); box.textContent = "";
+  for (let i = 0; i < 10; i++) {
+    const l = el("label", i === irSlot ? "on" : ""), r = el("input"); r.type = "radio"; r.name = "irslot"; r.checked = i === irSlot;
+    r.onchange = () => { irSlot = i; renderIrSlots(); updateIrButton(); };
+    l.append(r, el("span", "no", "Slot " + (i + 1)), el("span", "nm", (IR && IR.slots[i]) || "(name not read)"));
+    box.appendChild(l);
+  }
+}
+function updateIrButton() {
+  const b = $("#ir-upload");
+  b.disabled = !(IR && IR.available && irSource && irPreview && $("#ir-name").value.trim());
+  b.textContent = "Upload to IR slot " + (irSlot + 1);
+}
+function drawIr(wave) {
+  const c = $("#ir-wave"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H); g.fillStyle = "#12161a"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#2c353d"; g.lineWidth = 1; g.beginPath();
+  for (let ms = 0; ms <= 11; ms += 2) { const x = Math.round(ms / 11.6 * W) + 0.5; g.moveTo(x, 0); g.lineTo(x, H); }
+  g.moveTo(0, H / 2 + 0.5); g.lineTo(W, H / 2 + 0.5); g.stroke();
+  g.fillStyle = "#7d8a94"; g.font = "11px system-ui";
+  for (let ms = 0; ms <= 10; ms += 2) g.fillText(ms + " ms", Math.round(ms / 11.6 * W) + 4, H - 5);
+  if (!wave) return;
+  g.strokeStyle = "#f2b13c"; g.lineWidth = 1.6; g.beginPath();
+  wave.forEach((v, i) => { const x = i / (wave.length - 1) * W, y = H / 2 - v * (H / 2 - 8); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+  g.stroke();
+}
+async function irRunPreview() {
+  if (!irSource) return;
+  const facts = $("#ir-facts"); facts.textContent = "Converting...";
+  try {
+    const r = await api("/api/ir/preview", Object.assign({ normalize: $("#ir-norm").checked }, irSource));
+    irPreview = r; drawIr(r.wave);
+    if (!irNameTouched || !$("#ir-name").value.trim()) { $("#ir-name").value = r.name; irNameTouched = false; }
+    facts.textContent = "";
+    const parts = [
+      ["File", r.label], ["Length", r.seconds + " s at " + r.rate + " Hz"],
+      ["Sent to the unit", r.cut ? "the first " + r.kept_ms + " ms (the unit keeps 512 samples; the end is faded out)" : "all of it (" + r.kept_ms + " ms)"],
+      ["Peak", r.peak_in + " in the file, " + r.peak_out + " as sent"]];
+    parts.forEach(([k, v]) => { const d = el("div"); d.append(el("b", "", k + ": "), document.createTextNode(v)); facts.appendChild(d); });
+  } catch (e) { irPreview = null; drawIr(null); facts.textContent = e.message; toast(e.message, true); }
+  updateIrButton();
+}
+function irUseFile(file) {
+  if (!file) return;
+  if (IR && file.size > IR.max_mb * MB) { toast("That file is larger than " + IR.max_mb + " MB", true); return; }
+  const rd = new FileReader();
+  rd.onload = () => { irSource = { data: String(rd.result).split(",")[1] || "", filename: file.name }; irNameTouched = false; $("#ir-folder").value = ""; irRunPreview(); };
+  rd.onerror = () => toast("Could not read that file", true);
+  rd.readAsDataURL(file);
+}
+$("#ir-pick").onclick = () => $("#ir-file").click();
+$("#ir-file").onchange = ev => { irUseFile(ev.target.files[0]); ev.target.value = ""; };
+$("#ir-folder").onchange = ev => { if (ev.target.value) { irSource = { file: ev.target.value }; irNameTouched = false; irRunPreview(); } };
+$("#ir-norm").onchange = () => irRunPreview();
+$("#ir-name").oninput = () => { irNameTouched = true; updateIrButton(); };
+const drop = $("#ir-drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, ev => { ev.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", ev => irUseFile(ev.dataTransfer.files[0]));
+$("#ir-upload").onclick = async () => {
+  const name = $("#ir-name").value.trim(), replaced = (IR.slots[irSlot] || "").trim();
+  const msg = ["Replace IR slot " + (irSlot + 1) + (replaced ? " ('" + replaced + "')" : "") + " on the unit with '" + name + "'?", "",
+    "The IR now in that slot cannot be read back from the unit. Presets that use this slot will sound different."].join(String.fromCharCode(10));
+  if (!confirm(msg)) return;
+  const b = $("#ir-upload"); b.disabled = true; b.textContent = "Uploading...";
+  try {
+    const r = await api("/api/ir/upload", Object.assign({ slot: irSlot, name, replace: IR.slots[irSlot] || "", normalize: $("#ir-norm").checked }, irSource));
+    IR.slots = r.slots; S.ir_names = r.slots; renderIrSlots();
+    toast("IR slot " + (r.slot + 1) + " now holds " + r.name + ". Pick it in a preset's Cab module.");
+    if (cur) drawBoard();
+  } catch (e) { toast(e.message, true); }
+  updateIrButton();
+};
+drawIr(null);
 async function loadNam() {
   try { NAM = await api("/api/nam"); } catch (e) { toast(e.message, true); return; }
   const fill = (sel, items, empty) => { const s = $(sel); s.textContent = ""; if (empty !== undefined) s.add(new Option(empty, "")); items.forEach(([v, t]) => s.add(new Option(t, v))); };

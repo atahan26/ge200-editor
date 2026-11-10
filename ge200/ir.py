@@ -74,6 +74,15 @@ def load_audio(path: str):
     return np.mean(data, axis=1), rate          # channels averaged to mono
 
 
+def load_audio_bytes(data: bytes):
+    """Like ``load_audio`` for a file already in memory (an upload from the browser)."""
+    import io as _io
+    import numpy as np
+    import soundfile as sf
+    audio, rate = sf.read(_io.BytesIO(data), dtype="float32", always_2d=True)
+    return np.mean(audio, axis=1), rate
+
+
 def prepare(samples, rate: int, *, trim_silence: bool = True, preroll: int = 8, fade: int = 48,
             normalize_peak: float = 0.0):
     """Turn an arbitrary IR recording into the 512-sample, 44.1 kHz array the device takes.
