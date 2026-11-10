@@ -120,6 +120,8 @@ class DeviceBackend:
                         continue
                     with self.cond:
                         self.snap._ingest(f)
+                        if f.cmd in (0x85, 0xE3):          # the unit's IR / amp-slot name tables (shown in the cab list)
+                            self.snap.frames = [x for x in self.snap.frames if x.cmd != f.cmd] + [f]
                         if f.cmd == p.CMD_PRESET and f.data:
                             self.fresh[f.data[0]] = self.gen
                             if self._complete(self.gen):

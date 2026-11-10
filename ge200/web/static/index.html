@@ -96,7 +96,7 @@
   .mv button { background: none; border: 0; padding: 2px 7px; cursor: pointer; color: inherit; border-radius: 3px; font-size: 12px; }
   .mv button:hover:not(:disabled) { background: #0003; } .mv button:disabled { opacity: .25; cursor: default; }
   .plate { display: block; width: 100%; padding: 4px 6px; border: 1px solid #0006; border-radius: 3px; background: #101316; color: #f2d9a8; font: 600 12px var(--hw); text-overflow: ellipsis; box-shadow: inset 0 1px 3px #000a; }
-  select.plate option { background: #101316; color: #f2d9a8; }
+  select.plate option, select.plate optgroup { background: #101316; color: #f2d9a8; }
   select.plate { appearance: none; -webkit-appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, #f2d9a8 50%), linear-gradient(135deg, #f2d9a8 50%, transparent 50%);
                  background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%; background-size: 4px 4px; background-repeat: no-repeat; padding-right: 20px; }
   input.plate[type=number] { width: 70px; text-align: center; }
@@ -432,9 +432,21 @@ function modelPlate(key, m, repaint) {
   let t;
   if (tbl && tbl.length) {
     t = el("select", "plate"); t.setAttribute("aria-label", "model");
-    const irs = key === "cab" ? (S.ir_names || []) : [];
-    tbl.forEach((n, i) => { const id = i + 1; const ir = irs[id - 27]; t.add(new Option(`${id}  ${ir ? ir + "  (your IR)" : n}`, id)); });
-    if (m.type > tbl.length) t.add(new Option(`${m.type}  (unknown)`, m.type));
+    if (key === "cab") {
+      // the unit's cab list ends with ten slots for your own impulse responses; show them as such, with the name stored on the unit
+      const irs = S.ir_names || [], fac = document.createElement("optgroup"), own = document.createElement("optgroup");
+      fac.label = "Cabinet models"; own.label = "Your IR slots (10 places for your own impulse responses)";
+      tbl.forEach((n, i) => {
+        const id = i + 1;
+        if (id >= 27 && id <= 36) own.appendChild(new Option(`IR slot ${id - 26}: ${irs[id - 27] || "(name not read)"}`, id));
+        else fac.appendChild(new Option(`${id}  ${n}`, id));
+      });
+      t.append(fac, own);
+      if (m.type > tbl.length) t.add(new Option(`${m.type}  (unknown)`, m.type));
+    } else {
+      tbl.forEach((n, i) => t.add(new Option(`${i + 1}  ${n}`, i + 1)));
+      if (m.type > tbl.length) t.add(new Option(`${m.type}  (unknown)`, m.type));
+    }
     t.value = m.type;
   } else {
     t = el("input", "plate"); t.type = "number"; t.min = 1; t.max = Math.max(rg.type[1], m.type); t.value = m.type;
