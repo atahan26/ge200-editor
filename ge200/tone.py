@@ -19,8 +19,8 @@ from typing import Dict, List, Optional
 from . import llm
 from . import params as param_info
 from . import rig as rig_mod
-from .preset import (MODULE_LAYOUT, WIDE_FIELDS, WIDE_LIMITS, WIDE_MIN_SENSIBLE, EditError, Preset, apply_edit,
-                     param_ranges)
+from .preset import (EXP_FIELDS, EXP_MODULE_KEYS, EXP_TARGETS, MODULE_LAYOUT, WIDE_FIELDS, WIDE_LIMITS, WIDE_MIN_SENSIBLE,
+                     EditError, Preset, apply_edit, exp_valid, param_ranges)
 
 DEFAULT_MODEL = llm.ANTHROPIC_DEFAULT_MODEL
 MODULE_LABELS = {
@@ -49,6 +49,8 @@ def _schema() -> dict:
     }
     wide = {"type": "object", "properties": {k: {"type": "integer"} for k in WIDE_FIELDS},
             "required": list(WIDE_FIELDS), "additionalProperties": False}
+    exp = {"type": "object", "properties": {k: {"type": "integer"} for k in EXP_FIELDS},
+           "required": list(EXP_FIELDS), "additionalProperties": False}
     return {
         "type": "object",
         "properties": {
@@ -58,8 +60,9 @@ def _schema() -> dict:
             "modules": {"type": "object", "properties": {k: module for k in MODULE_KEYS},
                         "required": MODULE_KEYS, "additionalProperties": False},
             "wide": wide,
+            "exp": exp,
         },
-        "required": ["name", "notes", "chain_order", "modules", "wide"],
+        "required": ["name", "notes", "chain_order", "modules", "wide", "exp"],
         "additionalProperties": False,
     }
 
@@ -75,7 +78,7 @@ def available() -> dict:
 def _compact(p: Preset) -> dict:
     return {"name": p.name, "chain_order": p.chain_order,
             "modules": {k: {"type": m.type, "enabled": m.enabled, "params": m.params} for k, m in p.modules.items()},
-            "wide": p.wide}
+            "wide": p.wide, "exp": p.exp}
 
 
 def pick_examples(presets: Dict[int, Preset], count: int = 14) -> List[Preset]:
@@ -114,6 +117,15 @@ def build_system_prompt(presets: Dict[int, Preset], names: Optional[Dict[str, Li
         lines += ["The guitarist's own rig (fit the tone to it: pickups change how much gain and treble are needed, "
                   "and the listening setup changes the cab and EQ choices):", rig_mod.describe_for_prompt(rig), ""]
     lines += [
+        "`exp` assigns the two expression pedals (exp1 = the built-in pedal, exp2 = an external one) to one knob each: "
+        "`exp1_module` / `exp2_module` is the module index 0-8 in the order " + ", ".join(f"{i}={k}" for i, k in enumerate(EXP_MODULE_KEYS))
+        + "; `exp1_target` / `exp2_target` is the position in that module's target list: "
+        + "; ".join(f"{k}: " + ", ".join(f"{i}={n}" for i, n in enumerate(v)) + "" for k, v in EXP_TARGETS.items())
+        + ". A target only does something when the module's current model has a knob of that name (POSITION on the FX "
+        "module is the wah pedal position). The usual defaults are exp1 = ds VOLUME (1, 0) and exp2 = amp MST (2, 5), "
+        "i.e. volume; assign a wah or a delay/reverb knob only when the tone really wants a pedal sweep and keep the "
+        "base preset's values otherwise.",
+        "",
         "Be conservative with output levels and gain staging: the result is auditioned on real hardware through "
         "real speakers, so avoid settings that would be much louder than the example presets. Disable modules "
         "the sound does not need.",
@@ -179,6 +191,12 @@ def sanitize_edit(edit: dict, base: Preset, presets: Dict[int, Preset],
         v = wide_in.get(k)
         v = v if isinstance(v, int) and not isinstance(v, bool) else base.wide[k]
         out["wide"][k] = v if v == base.wide[k] else max(lo, min(hi, v))     # untouched values stay exactly as they were
+    exp_in = edit.get("exp") if isinstance(edit.get("exp"), dict) else {}
+    out["exp"] = dict(base.exp)
+    for n in ("exp1", "exp2"):          # a pair is taken only when it names a real target, else the base's pair stays
+        m, t = exp_in.get(n + "_module"), exp_in.get(n + "_target")
+        if exp_valid(m, t):
+            out["exp"][n + "_module"], out["exp"][n + "_target"] = m, t
     apply_edit(base.raw, out)           # raises EditError if something is still wrong
     return out
 

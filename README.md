@@ -78,6 +78,13 @@ Each hosted request costs a few cents; the Claude provider marks the stable part
 repo; override with `GE200_RIG`). It is added to the tone generator's prompt so tones fit *your* setup. Parameter
 meanings with confidence levels live in `ge200/params.py` (sliders show the label, an italic `?` marks guesses).
 
+## Expression pedals
+Each preset assigns the built-in pedal (EXP) and the external one (EXP2) to one knob of one module. The editor shows
+them in the **Expression pedals** panel (module and knob menus, with a note when the module is off or the current model
+has no such knob) and tags the targeted knob on the board. How it is stored was worked out by comparing the unit's
+state frames with stored presets and checked on 200 real presets (PROTOCOL.md). Not editable yet: MERGE (one pedal on
+several knobs with heel and toe values) and the pedal calibration; presets that use MERGE keep it untouched.
+
 ## Your own impulse responses (IRs)
 The unit has 10 places for your own cabinet IRs (they appear as *IR slot 1 to 10* in a Cab module). The editor's **IRs**
 tab takes a WAV/FLAC/AIFF file (drop it, choose it, or pick one from the `--ir-dir` folder), shows what will be sent

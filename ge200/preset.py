@@ -35,7 +35,7 @@ def apply_edit(raw: bytes, edit: dict) -> bytes:
     """
     if len(raw) != PRESET_SIZE:
         raise EditError("preset image must be 512 bytes")
-    unknown = set(edit) - {"name", "chain_order", "modules", "wide"}
+    unknown = set(edit) - {"name", "chain_order", "modules", "wide", "exp"}
     if unknown:
         raise EditError(f"unknown edit fields: {sorted(unknown)}")
     out = bytearray(raw)
@@ -58,6 +58,17 @@ def apply_edit(raw: bytes, edit: dict) -> bytes:
         if not isinstance(value, int) or not lo <= value <= hi:
             raise EditError(f"{key} must be an integer {lo}..{hi}")
         out[WIDE_FIELDS[key]:WIDE_FIELDS[key] + 2] = value.to_bytes(2, "little")
+    exp = edit.get("exp")
+    if exp is not None:
+        if not isinstance(exp, dict) or set(exp) - set(EXP_FIELDS):
+            raise EditError(f"exp must be an object with the keys {sorted(EXP_FIELDS)}")
+        merged = {k: out[o] for k, o in EXP_FIELDS.items()}
+        merged.update(exp)
+        for n in ("exp1", "exp2"):
+            if not exp_valid(merged[n + "_module"], merged[n + "_target"]):
+                raise EditError(f"{n}: module must be 0..8 and target must exist in that module's list")
+        for k, o in EXP_FIELDS.items():
+            out[o] = merged[k]
     layout = {k: (o, n) for k, o, n in MODULE_LAYOUT}
     for key, m in edit.get("modules", {}).items():
         if key not in layout:
@@ -104,6 +115,35 @@ WIDE_LIMITS = {"eq_freq_1": (0, 20000), "eq_freq_2": (0, 20000), "eq_freq_3": (0
 WIDE_MIN_SENSIBLE = 20      # a value the *editor or the generator* changes is kept at least this large
 
 
+# Expression pedal assignment [V]. Found by lining up the device's 0xA3 state frame (whose bytes the vendor editor builds as
+# [flag, EXP1 module-1, EXP1 target, EXP2 module-1, EXP2 target, ...]) with stored presets, then checked on 200 real
+# presets: the target is a knob the module's current model really has in 114 of 115 non-default assignments, and no value
+# is out of range. ``module`` is the index into MODULE_LAYOUT (0 = FX ... 8 = REVERB); ``target`` indexes the module's list
+# below, which is the list the editor offers (names read from its EXP picture tables; in the editor every name appears
+# twice, grey and orange, and only the first half is ever stored). Not decoded: MERGE (one pedal on several parameters,
+# each with a heel and a toe value) and the pedal calibration.
+EXP_FIELDS = {"exp1_module": 356, "exp1_target": 357, "exp2_module": 358, "exp2_target": 359}
+EXP_TARGETS = {
+    "fx": ["POSITION", "Q", "RATE", "ATTACK", "RANGE", "SENS", "THRE", "PEAK", "RATIO", "LEVEL"],
+    "ds": ["VOLUME", "TONE", "GAIN"],
+    "amp": ["GAIN", "BASS", "MID", "TREBLE", "PRES", "MST"],
+    "cab": ["CENTER", "DISTANCE"],
+    "ns": ["THRES", "SENS", "ATTACK", "RELEASE"],
+    "eq": ["100HZ", "80HZ", "250HZ", "240HZ", "200HZ", "630HZ", "750HZ", "400HZ", "1.6KHZ", "2.2KHZ", "800HZ",
+           "4KHZ", "6.6KHZ", "3.2KHZ"],
+    "mod": ["RATE", "PITCH", "RISE", "SAMPLE", "MIX", "DEPTH", "LEVEL", "FEEDBACK", "TONE", "Q", "RANGE", "BIT"],
+    "delay": ["LEVEL", "F.BACK", "TIME", "TIME A", "THRE", "TIME B"],
+    "reverb": ["PRE DELAY", "LEVEL", "DECAY", "TONE"],
+}
+EXP_MODULE_KEYS = [k for k, _, _ in MODULE_LAYOUT]
+
+
+def exp_valid(module: int, target: int) -> bool:
+    return (isinstance(module, int) and isinstance(target, int) and not isinstance(module, bool)
+            and not isinstance(target, bool) and 0 <= module < len(EXP_MODULE_KEYS)
+            and 0 <= target < len(EXP_TARGETS[EXP_MODULE_KEYS[module]]))
+
+
 @dataclass
 class Module:
     type: int          # 1-based model number (0 never seen)
@@ -119,6 +159,7 @@ class Preset:
     modules: Dict[str, Module]
     raw: bytes               # the full 512 bytes
     wide: Dict[str, int] = field(default_factory=dict)   # 16-bit values, see WIDE_FIELDS
+    exp: Dict[str, int] = field(default_factory=dict)    # expression pedal assignment, see EXP_FIELDS
 
     @classmethod
     def from_bytes(cls, index: int, raw: bytes) -> "Preset":
@@ -131,7 +172,8 @@ class Preset:
             for key, off, length in MODULE_LAYOUT
         }
         wide = {k: int.from_bytes(raw[o:o + 2], "little") for k, o in WIDE_FIELDS.items()}
-        return cls(index=index, name=name, chain_order=list(raw[0:9]), modules=modules, raw=raw, wide=wide)
+        exp = {k: raw[o] for k, o in EXP_FIELDS.items()}
+        return cls(index=index, name=name, chain_order=list(raw[0:9]), modules=modules, raw=raw, wide=wide, exp=exp)
 
     def to_dict(self, names: Optional[Dict[str, List[str]]] = None) -> dict:
         mods = {}
@@ -147,5 +189,6 @@ class Preset:
             "chain_order": self.chain_order,
             "modules": mods,
             "wide": dict(self.wide),
+            "exp": dict(self.exp),
             "raw": self.raw.hex(),
         }

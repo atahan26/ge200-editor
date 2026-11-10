@@ -135,6 +135,50 @@ number of entries in the editor's model-name tables:
   editor); bytes 128..136 hold a few more small values. Not decoded.
 - Preset volume ("PRESET VOL" in the editor) is most likely the 0x64 at offset 10; unconfirmed.
 
+## Expression pedal, preset level and the active-preset state frames [V unless marked]
+Method: select 24 different presets on the unit (selection only), run the hello each time, and line up every small state
+frame of the reply with the stored 512-byte preset byte by byte (a frame byte that equals the same preset offset in all 24
+presets is mapped). The vendor editor's frame builders (static analysis) then name the fields.
+
+| Frame | Content | Preset bytes |
+|---|---|---|
+| 0x90..0x99 | module blocks (`[0, enable, 0, type, 0, p0, ...]` as 16-bit values) and the wide values | as in the layout above (the last values of 0x96, 0x97, 0x98 = bytes 344..355, little endian) |
+| 0xA3 (7 bytes) | `[flag, EXP1 module, EXP1 target, EXP2 module, EXP2 target, 0, 100]` | flag = byte 11, the four EXP bytes = **356, 357, 358, 359** (checked in 24 of 24 presets); the last two are 0 and 100 in every preset seen and do not equal bytes 9 and 10 |
+| 0xA4 (12 bytes) | `[u16 big endian, nine 0/1 flags, 1 byte]` | the nine flags = bytes **116..124**; meaning not decoded (the editor keeps them in an array of 9, one per module) |
+| 0xBB (2 bytes) | flag | byte 126 |
+| 0xA1 (10 bytes) | `09 01 01 28 28 01 01 00 00 00` in all 24 presets | not preset data (looks like a system setting) |
+
+**Expression pedal assignment (bytes 356..359).** Two pairs, `[module, target]`: EXP (the built-in pedal) and EXP2 (the external
+pedal jack). `module` is 0-based in the block order (0 = FX, 1 = DS, 2 = AMP, 3 = CAB, 4 = NS, 5 = EQ, 6 = MOD, 7 = DELAY,
+8 = REVERB; the editor sends `module - 1` of its 1-based selection). `target` is the position in that module's target list,
+read from the editor's EXP picture tables (each name is pictured twice, grey and orange; only the first half is stored):
+
+| module | targets (0, 1, 2, ...) |
+|---|---|
+| FX | POSITION, Q, RATE, ATTACK, RANGE, SENS, THRE, PEAK, RATIO, LEVEL |
+| DS | VOLUME, TONE, GAIN |
+| AMP | GAIN, BASS, MID, TREBLE, PRES, MST |
+| CAB | CENTER, DISTANCE |
+| NS | THRES, SENS, ATTACK, RELEASE |
+| EQ | 100HZ, 80HZ, 250HZ, 240HZ, 200HZ, 630HZ, 750HZ, 400HZ, 1.6KHZ, 2.2KHZ, 800HZ, 4KHZ, 6.6KHZ, 3.2KHZ |
+| MOD | RATE, PITCH, RISE, SAMPLE, MIX, DEPTH, LEVEL, FEEDBACK, TONE, Q, RANGE, BIT |
+| DELAY | LEVEL, F.BACK, TIME, TIME A, THRE, TIME B |
+| REVERB | PRE DELAY, LEVEL, DECAY, TONE |
+
+Evidence on the 200 real presets: with this reading no module or target value is out of range (the 1-based reading gave 22
+invalid pairs); in the 115 non-default assignments whose module is on, the named target is a knob that the module's current
+model really has in 114 cases (names compared with the firmware-derived knob labels); the default pair (1, 0) + (2, 5) is
+DS VOLUME + AMP MST, i.e. volume, and it is what the empty presets hold. FX POSITION is the wah pedal position (the manual: this
+kind of target also switches the block on and off with the toe switch). Written by `apply_edit({"exp": {...}})`, which
+refuses values outside the lists.
+**Not decoded:** MERGE (one pedal on several parameters, each with a heel and a toe value; in the manual only), the pedal
+calibration, and the meaning of byte 11 (a 0/1 flag; the manual's "EXP VOL PEDAL" is a candidate). Candidate for the MERGE
+data [S]: in presets that have non-zero bytes in 128..181 there is often a second group exactly 54 bytes later (e.g. 140, 141,
+142, 145 and 194, 195, 196, 199), which looks like heel values and toe values for the same parameter slots.
+
+**Byte 10** (50..100, 100 in 166 of 200 presets) is not the pedal's volume range: it is a separate per-preset level, most likely
+the editor's preset volume [S]. Byte 9 is 0 in all presets.
+
 ## Parameter meanings per model [firmware-derived, cross-checked with real presets]
 The device firmware (plain Thumb-2 code; readable, never modified or flashed) fills, for every effect model, four label
 fields of its UI structure from small `case` blocks selected by the model number (`tbb` jump tables). The k-th label is
@@ -165,7 +209,7 @@ device's state frames with the stored image, checked on 165 presets): 344/346/34
 (defaults 100/600/1250), 350 = delay time in ms (117..1066 seen), 352 = delay time B in ms (TWO-HEAD; 40 or 1000 in
 other presets), 354 = a modulation value (200 by default, 63..305 seen; meaning unknown). Bytes 356..359 hold more 16-bit
 values (1282, 1, 2, 2304 seen; unknown).
-Not mapped: control/EXP assignment flags (bytes 104..126, 128..136), the 0x64 at offset 10 (preset volume?), offset 354.
+Not mapped: bytes 104..115, 116..124 (nine flags, see the state-frame section), 125, 126, the MERGE data (128..235?), the 0x64 at offset 10 (preset level, probably), offset 354. The expression pedal assignment IS mapped (bytes 356..359).
 
 ## Other frames in the hello reply [V content, meaning inferred]
 - 0x84: ASCII `2.0.4` + `MOOER_GE200` (firmware version + device name).

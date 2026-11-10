@@ -28,7 +28,7 @@ from .. import rig as rig_mod
 from .. import llm, tone
 from .irlab import IrError
 from ..client import Ge200, Snapshot, load_raw
-from ..preset import EditError, Preset, apply_edit, param_ranges
+from ..preset import EXP_MODULE_KEYS, EXP_TARGETS, EditError, Preset, apply_edit, param_ranges
 
 STATIC = Path(__file__).with_name("static")
 IDLE_RESELECT_S = 4.0     # after this long without device traffic, re-select the slot before a live update
@@ -299,6 +299,7 @@ class App:
             "model_labels": {k: {str(t): labs for t, labs in v.items()} for k, v in param_info.MODEL_LABELS.items()},
             "wide_info": param_info.WIDE_INFO,
             "note_divisions": param_info.NOTE_DIVISIONS,
+            "exp_targets": {"modules": EXP_MODULE_KEYS, "targets": EXP_TARGETS},
         }
 
     def _ir_names(self) -> list:
