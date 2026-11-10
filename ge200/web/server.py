@@ -235,8 +235,7 @@ class DeviceBackend:
 
 
 class App:
-    def __init__(self, backend, names=None, backup_dir: Optional[str] = None, rig_path=None, nam=None, irlab=None) -> None:
-        self.nam = nam                                              # NamLab or None
+    def __init__(self, backend, names=None, backup_dir: Optional[str] = None, rig_path=None, irlab=None) -> None:
         from .irlab import IrLab
         self.irlab = irlab or IrLab(None)                           # IR import tools (browser uploads work without a folder)
         self.ir_names_cache: Optional[list] = None                  # names after an upload, until the next full read
@@ -540,18 +539,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.app.state())
             if self.path == "/api/log":
                 return self._json(200, list(self.app.log))
-            if self.path == "/api/nam":
-                if self.app.nam is None:
-                    return self._json(200, {"available": False, "reason": "NAM lab not configured (--nam-dir)",
-                                            "models": [], "irs": [], "dis": [], "folders": {}})
-                return self._json(200, self.app.nam.listing())
-            if self.path.startswith("/api/nam/audio/"):
-                if self.app.nam is None:
-                    return self._json(404, {"error": "not found"})
-                try:
-                    return self._send(200, self.app.nam.audio(self.path.rsplit("/", 1)[1]), "audio/wav")
-                except KeyError:
-                    return self._json(404, {"error": "no such render"})
             if self.path == "/api/ir":
                 return self._json(200, self.app.ir_info())
             if self.path == "/api/status":
@@ -595,11 +582,6 @@ class Handler(BaseHTTPRequestHandler):
                 llm.save_config(values)
                 self.app._log("AI provider setup saved (" + ", ".join(sorted(values)) + ")")   # names only, never values
                 return self._json(200, {"tone": tone.available()})
-            if self.path == "/api/nam/render":
-                if self.app.nam is None:
-                    raise ValueError("NAM lab not configured (--nam-dir)")
-                return self._json(200, self.app.nam.render(str(body.get("model", "")), str(body.get("ir", "")),
-                                                           str(body.get("di", "")), body.get("gain_db", 0)))
             if self.path not in ("/api/refresh", "/api/backup") and (
                     not isinstance(slot, int) or not 0 <= slot <= 199):
                 raise EditError("slot must be an integer 0..199")
@@ -648,10 +630,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--names", metavar="FILE", help="local JSON model-name table (tools/extract_names.py)")
     ap.add_argument("--backup-dir", metavar="DIR", required=True, help="where the automatic pre-write backup goes")
     ap.add_argument("--demo-raw", metavar="FILE", help="use a saved raw dump in memory instead of the device")
-    ap.add_argument("--nam-dir", metavar="DIR", help="folder with your .nam captures (enables the NAM lab)")
     ap.add_argument("--ir-dir", metavar="DIR", help="folder with cabinet IR wav files")
-    ap.add_argument("--di-dir", metavar="DIR", help="folder with DI guitar recordings to render")
-    ap.add_argument("--nam-python", metavar="EXE", help="python of the NAM environment (default: <repo>/.venv-nam)")
     args = ap.parse_args(argv)
     names = json.load(open(args.names, encoding="utf-8")) if args.names else {}
     if args.demo_raw:
@@ -660,13 +639,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         backend = DeviceBackend()
     from ..env import load_env
     load_env()
-    nam = None
-    if args.nam_dir:
-        from .namlab import NamLab
-        py = args.nam_python or str(Path(__file__).resolve().parents[2] / ".venv-nam" / "Scripts" / "python.exe")
-        nam = NamLab(args.nam_dir, args.ir_dir, args.di_dir, py)
     from .irlab import IrLab
-    app = App(backend, names, args.backup_dir, rig_mod.default_path(), nam, IrLab(args.ir_dir))
+    app = App(backend, names, args.backup_dir, rig_mod.default_path(), IrLab(args.ir_dir))
     srv = make_server(app, args.port)
     print(f"GE200 editor on http://127.0.0.1:{srv.server_address[1]}/  ({'DEMO, in memory' if args.demo_raw else 'device'})",
           flush=True)

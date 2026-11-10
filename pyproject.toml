@@ -6,7 +6,7 @@ requires-python = ">=3.9"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Atahan Şevki Bilginoğlu" }]
-keywords = ["mooer", "ge200", "guitar", "multi-effects", "preset editor", "usb hid", "expression pedal", "impulse response", "nam"]
+keywords = ["mooer", "ge200", "guitar", "multi-effects", "preset editor", "usb hid", "expression pedal", "impulse response"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
@@ -17,7 +17,7 @@ classifiers = [
 
 [project.optional-dependencies]
 llm = ["anthropic"]          # only for the tone generator (ge200.tone / web editor "Generate")
-audio = ["numpy", "scipy", "soundfile"]   # impulse-response / capture file handling
+audio = ["numpy", "scipy", "soundfile"]   # impulse-response file handling
 
 [project.urls]
 Homepage = "https://github.com/atahan26/ge200-editor"
@@ -31,7 +31,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["ge200", "ge200.web", "ge200.nam"]
+packages = ["ge200", "ge200.web"]
 
 [tool.setuptools.package-data]
 "ge200.web" = ["static/*.html"]

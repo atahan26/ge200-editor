@@ -96,25 +96,10 @@ slot is replaced and the unit cannot give it back; the page sends the name it sh
 can never overwrite a different IR. Needs numpy, scipy and soundfile (`pip install .[audio]`). Command line:
 `python -m ge200 ir-upload SLOT file.wav --name NAME --write`.
 
-## NAM lab (second engine)
-NAM (Neural Amp Modeler) captures run in a **separate environment** (`.venv-nam`: PyTorch + neural-amp-modeler), so the
-main environment stays light. Start the editor with your folders and use the **NAM lab** tab to render a DI recording
-through a capture and an optional cabinet IR:
-```powershell
-python -m ge200.web --backup-dir ... --nam-dir D:\nam --ir-dir D:\ir --di-dir D:\di
-python -m ge200.nam inspect model.nam          # metadata
-python -m ge200.nam render model.nam di.wav out.wav --ir cab.wav
-python -m ge200.nam bench model.nam            # speed on this machine
-```
-A standard-size WaveNet renders about 10x faster than real time on a laptop CPU. Live playing through Python is
-**not** practical (block processing took 9-13 ms per 2.7 ms block); use a native NAM host for that. NAM models cannot be
-loaded into the GE200 itself (its amp slots take Mooer's own capture format).
-
 ## Without the PC (idea, partly implemented)
 The unit has no WiFi or Bluetooth, but anything that can act as a USB host can sit next to it and serve the web
 editor over its own WiFi. `ge200/hid_linux.py` is a hidraw transport (Raspberry Pi etc.): it is written and tested with
-fake I/O only and has **not** been tried on a real Linux machine yet. NAM captures cannot run on the GE200 itself (its
-amp slots take Mooer's own `.amp/.GNR` format); a small computer could run NAM next to it.
+fake I/O only and has **not** been tried on a real Linux machine yet.
 
 ## Model names
 Model names (amp/cab/effect names) are vendor data and are not shipped. If you own the official editor you

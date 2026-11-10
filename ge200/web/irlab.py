@@ -13,9 +13,21 @@ import re
 from typing import List, Optional, Tuple
 
 from .. import ir
-from .namlab import _list_audio
 
+AUDIO_EXT = (".wav", ".flac", ".aif", ".aiff")
 MAX_BYTES = 8 * 1024 * 1024          # decoded size of an uploaded audio file
+
+
+def _list_audio(directory: Optional[str]) -> List[str]:
+    """Audio files under ``directory`` (relative paths, forward slashes, sorted); [] when there is no such folder."""
+    if not directory or not os.path.isdir(directory):
+        return []
+    out = []
+    for root, _d, files in os.walk(directory):
+        for fn in files:
+            if fn.lower().endswith(AUDIO_EXT):
+                out.append(os.path.relpath(os.path.join(root, fn), directory).replace(chr(92), "/"))
+    return sorted(out, key=str.lower)
 
 
 class IrError(ValueError):

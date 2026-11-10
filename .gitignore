@@ -10,7 +10,6 @@ __pycache__/
 .venv/
 .env
 *.egg-info/
-.venv-nam/
 backups/
 backup*.json
 backup*.bin
@@ -20,4 +19,4 @@ dist/
 llm.json
 rig.json
 .claude/
-*.nam
+.venv-nam/

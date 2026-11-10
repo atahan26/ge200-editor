@@ -266,7 +266,7 @@
 </defs></svg>
 <header class="top">
   <div class="brand">GE200</div>
-  <nav class="tabs"><button id="tab-presets" class="on">Presets</button><button id="tab-ir">IRs</button><button id="tab-nam">NAM lab</button></nav>
+  <nav class="tabs"><button id="tab-presets" class="on">Presets</button><button id="tab-ir">IRs</button></nav>
   <dl class="stat" id="meta"><div><dt>Status</dt><dd>connecting</dd></div></dl>
   <span class="spacer"></span>
   <button class="btn" id="rig" title="Your guitars, pickups and taste: used by the tone generator">My rig</button>
@@ -281,22 +281,6 @@
     <div id="list"></div>
   </aside>
   <section id="editor"><div class="empty"><b>Pick a preset</b>It is selected on the unit and loaded here. Nothing is stored until you press Save.</div></section>
-</main>
-<main class="work" id="namlab" hidden style="display:block">
-  <section class="panel">
-    <h2>NAM lab</h2>
-    <p class="note" style="margin-top:0">A second engine next to the GE200: run a DI recording through one of your NAM captures and a cabinet IR, then listen. Rendering is offline, in a separate environment (about 10x faster than real time for a standard model) and never touches the unit.</p>
-    <div id="namstate" class="note"></div>
-    <div class="namgrid">
-      <label>NAM capture<select id="nam-model"></select></label>
-      <label>Cabinet IR<select id="nam-ir"></select></label>
-      <label>DI recording<select id="nam-di"></select></label>
-      <label>Input gain (dB)<input id="nam-gain" type="number" value="0" min="-40" max="40" step="1"></label>
-    </div>
-    <div class="bar2"><button id="nam-render" class="btn go">Render</button><span id="nam-info" class="note" style="margin:0"></span></div>
-    <audio id="nam-audio" controls style="width:100%;margin-top:12px" hidden></audio>
-    <div id="nam-meta" class="note"></div>
-  </section>
 </main>
 <main class="work" id="irlab" hidden style="display:block">
   <section class="panel">
@@ -949,16 +933,14 @@ $("#aisave").onclick = async () => {
   try { await saveAi(values); toast("Saved"); } catch (e) { toast(e.message, true); }
 };
 
-// ---------------------------------------------------------------- tabs and the NAM lab
-let NAM = null;
+// ---------------------------------------------------------------- tabs
 function showTab(which) {
-  const pages = { presets: "#presets", ir: "#irlab", nam: "#namlab" };
+  const pages = { presets: "#presets", ir: "#irlab" };
   for (const [k, sel] of Object.entries(pages)) { $(sel).hidden = k !== which; $("#tab-" + k).classList.toggle("on", k === which); }
-  if (which === "nam") loadNam(); else if (which === "ir") loadIr(); else layoutCables();
+  if (which === "ir") loadIr(); else layoutCables();
 }
 $("#tab-presets").onclick = () => showTab("presets");
 $("#tab-ir").onclick = () => showTab("ir");
-$("#tab-nam").onclick = () => showTab("nam");
 
 // ---------------------------------------------------------------- IR page
 let IR = null, irSource = null, irPreview = null, irSlot = 9, irNameTouched = false;
@@ -1048,34 +1030,6 @@ $("#ir-upload").onclick = async () => {
   updateIrButton();
 };
 drawIr(null);
-async function loadNam() {
-  try { NAM = await api("/api/nam"); } catch (e) { toast(e.message, true); return; }
-  const fill = (sel, items, empty) => { const s = $(sel); s.textContent = ""; if (empty !== undefined) s.add(new Option(empty, "")); items.forEach(([v, t]) => s.add(new Option(t, v))); };
-  fill("#nam-model", NAM.models.map(m => [m.id, `${m.name}${m.gear_make ? " (" + m.gear_make + " " + (m.gear_model || "") + ")" : ""}`]));
-  fill("#nam-ir", NAM.irs.map(f => [f, f]), "(no cabinet IR)");
-  fill("#nam-di", NAM.dis.map(f => [f, f]));
-  const f = NAM.folders || {};
-  $("#namstate").textContent = NAM.available
-    ? `${NAM.models.length} capture(s) in ${f.nam || "?"}; ${NAM.irs.length} IR(s) in ${f.ir || "(no folder)"}; ${NAM.dis.length - 1} DI file(s) in ${f.di || "(no folder)"}.`
-    : "NAM lab unavailable: " + NAM.reason;
-  $("#nam-render").disabled = !NAM.available || !NAM.models.length;
-  if (NAM.available && !NAM.models.length) $("#namstate").textContent += " Put .nam files in the capture folder and reopen this tab.";
-  showNamMeta();
-}
-function showNamMeta() {
-  const m = NAM && NAM.models.find(x => x.id === $("#nam-model").value);
-  $("#nam-meta").textContent = m ? [m.architecture + " " + (m.sample_rate / 1000) + " kHz", m.weights ? m.weights + " weights" : "", m.tone_type || "", m.gear_type || "", m.modeled_by ? "by " + m.modeled_by : ""].filter(Boolean).join(", ") : "";
-}
-$("#nam-model").onchange = showNamMeta;
-$("#nam-render").onclick = async () => {
-  const b = $("#nam-render"); b.disabled = true; $("#nam-info").textContent = "Rendering...";
-  try {
-    const r = await api("/api/nam/render", { model: $("#nam-model").value, ir: $("#nam-ir").value, di: $("#nam-di").value, gain_db: parseFloat($("#nam-gain").value) || 0 });
-    const a = $("#nam-audio"); a.hidden = false; a.src = "/api/nam/audio/" + r.id; a.play().catch(() => {});
-    $("#nam-info").textContent = `${r.stats.seconds} s of audio in ${r.stats.total_s} s (inference ${r.stats.inference_s} s, ${(1 / Math.max(r.stats.realtime_factor, 1e-6)).toFixed(0)}x real time)`;
-  } catch (e) { toast(e.message, true); $("#nam-info").textContent = ""; }
-  finally { b.disabled = false; }
-};
 
 // ---------------------------------------------------------------- rig dialog
 let rigDraft = null;

@@ -32,7 +32,6 @@ ve cihazın tamamını tarayıcında, bir pedalboard gibi çizilmiş halde sunar
 - **Kendi kabin IR'ların.** Bir WAV bırak, gönderilecek hali (512 örnek) gör, adını ver ve 10 IR slotundan birine koy.
 - **Expression pedalları.** EXP ve EXP2'yi herhangi bir modülün herhangi bir düğmesine ata. **MERGE** de var (tek pedalın
   birkaç düğmeyi birlikte sürmesi, her biri topuk değerinden uç değerine).
-- **NAM lab.** Bir DI kaydını Neural Amp Modeler capture'ı ve bir kabin IR'ından geçirip çevrimdışı dinle.
 - **CLI ve Python kütüphanesi.** Preset'leri betiklerden dök, karşılaştır, seç ve sakla.
 
 ## Nasıl çalışır?
@@ -80,7 +79,6 @@ preset seç; üst çubuktaki **AI setup** bir ton üretici sağlayıcısı bağl
 | Expression pedal ve MERGE | Cihazın durum çerçevelerinden ve firmware'in kendi MERGE kodundan çözüldü, 200 preset üzerinde kontrol edildi (115 hedefin 114'ü o modelde gerçekten var). Pedal oynatılarak henüz denenmedi |
 | Ton üretici | Claude gerçek API ile denendi; diğer sağlayıcılar yerel sahte sunucuyla |
 | Raspberry Pi / Linux aktarımı | Yazıldı, yalnızca sahte G/Ç ile test edildi |
-| Canlı NAM | Python'da pratik değil (ölçüldü). NAM lab çevrimdışıdır |
 
 Ayrıntılar ve açık sorular [PROTOCOL.md](PROTOCOL.md) içinde; her özellik [docs/USAGE.md](docs/USAGE.md) içinde anlatılıyor.
 
@@ -92,7 +90,7 @@ Ayrıntılar ve açık sorular [PROTOCOL.md](PROTOCOL.md) içinde; her özellik 
 | `ge200/preset.py`, `params.py` | 512 baytlık preset düzeni, expression pedal ve MERGE, modele göre düğme adları |
 | `ge200/web/` | Editör: yerel sunucu ve tek sayfalık pedalboard arayüzü |
 | `ge200/llm.py`, `tone.py`, `rig.py` | Yapay zeka sağlayıcıları, ton üretici, gitarın ve zevkinin profili |
-| `ge200/ir.py`, `ge200/nam/` | IR dönüştürme, çevrimdışı NAM işleme |
+| `ge200/ir.py` | IR'ı cihazın 512 örneklik biçimine dönüştürme |
 | `tools/` | Tek seferlik denemeler (birkaçı cihaza yazar: önce her dosyanın açıklamasını oku) |
 | `PROTOCOL.md` | Neyin doğrulandığı, neyin sadece tahmin olduğu |
 | `AGENTS.md` | Yapay zeka kod ajanları için talimatlar |
@@ -119,4 +117,4 @@ preset'lere güvenmeden önce kodu gözden geçir; dump komutu bunun için var.
 [MIT](LICENSE). Mooer ile bağlantılı değildir, onun tarafından onaylanmamış veya desteklenmemiştir. Tüm ürün adları sahiplerine aittir.
 Katkılar ve issue'lar memnuniyetle karşılanır.
 
-<sub>Anahtar kelimeler: Mooer GE200, multi-efekt, gitar pedalı, preset editörü, USB HID, tersine mühendislik, expression pedal, impulse response, kabin IR, Neural Amp Modeler, NAM, Windows, Python</sub>
+<sub>Anahtar kelimeler: Mooer GE200, multi-efekt, gitar pedalı, preset editörü, USB HID, tersine mühendislik, expression pedal, impulse response, kabin IR, Windows, Python</sub>

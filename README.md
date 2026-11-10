@@ -32,7 +32,6 @@ the whole unit in your browser, drawn like a pedalboard.
 - **Your own cabinet IRs.** Drop a WAV, see what will be sent (512 samples), name it and put it in one of the 10 IR slots.
 - **Expression pedals.** Assign EXP and EXP2 to any knob of any module, including **MERGE** (one pedal moving several knobs, each from
   its heel to its toe value).
-- **NAM lab.** Render a DI recording through a Neural Amp Modeler capture and a cabinet IR, offline.
 - **CLI and Python library.** Dump, diff, select and store presets from scripts.
 
 ## How it works
@@ -80,7 +79,6 @@ dump: `python -m ge200.web --backup-dir backups --demo-raw backup.bin`.
 | Expression pedal and MERGE | Decoded from the unit's state frames and the firmware's own MERGE code, checked on 200 presets (114 of 115 targets exist on the model). Not yet tested by moving the pedal |
 | Tone generator | Claude tested against the real API; the other providers against a local fake server |
 | Raspberry Pi / Linux transport | Written, tested with fake I/O only |
-| Live NAM | Not practical in Python (measured). The NAM lab is offline |
 
 Details and the open questions are in [PROTOCOL.md](PROTOCOL.md); every feature is described in [docs/USAGE.md](docs/USAGE.md).
 
@@ -92,7 +90,7 @@ Details and the open questions are in [PROTOCOL.md](PROTOCOL.md); every feature 
 | `ge200/preset.py`, `params.py` | The 512-byte preset layout, expression pedal and MERGE, knob names per model |
 | `ge200/web/` | The editor: local server and the single-page pedalboard UI |
 | `ge200/llm.py`, `tone.py`, `rig.py` | AI providers, the tone generator, your guitar and taste profile |
-| `ge200/ir.py`, `ge200/nam/` | IR conversion, offline NAM rendering |
+| `ge200/ir.py` | IR conversion to the unit's 512-sample format |
 | `tools/` | One-off experiments (several write to the unit: read each docstring first) |
 | `PROTOCOL.md` | What is verified and what is only inferred |
 | `AGENTS.md` | Instructions for AI coding agents |
@@ -119,4 +117,4 @@ before trusting it with presets you cannot recreate; the dump command exists for
 [MIT](LICENSE). Not affiliated with, endorsed by or sponsored by Mooer. All product names belong to their owners.
 Contributions and issues are welcome.
 
-<sub>Keywords: Mooer GE200, multi-effects, guitar pedal, preset editor, USB HID, reverse engineering, expression pedal, impulse response, cabinet IR, Neural Amp Modeler, NAM, Windows, Python</sub>
+<sub>Keywords: Mooer GE200, multi-effects, guitar pedal, preset editor, USB HID, reverse engineering, expression pedal, impulse response, cabinet IR, Windows, Python</sub>

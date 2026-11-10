@@ -43,7 +43,7 @@ class IrLabTests(unittest.TestCase):
         snap = Snapshot(version="t", active_index=1)
         snap.presets = make_presets(6)
         self.backend = MemoryBackend(snap)
-        self.app = App(self.backend, {}, None, None, None, IrLab(self.tmp.name))
+        self.app = App(self.backend, {}, None, None, IrLab(self.tmp.name))
         self.srv = make_server(self.app, 0)
         self.port = self.srv.server_address[1]
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()

@@ -6,9 +6,9 @@ need to change the code safely.
 
 ## What this is
 An unofficial Python toolkit for the **Mooer GE200** multi-effects pedal: a USB HID protocol client (reverse-engineered,
-see `PROTOCOL.md`), a CLI, a local web editor drawn as a pedalboard, an LLM tone generator (any provider), IR import,
-expression-pedal assignment and MERGE, and an offline NAM render lab. Python 3.9+. The core needs only the standard
-library; numpy/scipy/soundfile (IRs, NAM) and `anthropic` (optional) are extras.
+see `PROTOCOL.md`), a CLI, a local web editor drawn as a pedalboard, an LLM tone generator (any provider), IR import
+and expression-pedal assignment with MERGE. Python 3.9+. The core needs only the standard
+library; numpy/scipy/soundfile (IRs) and `anthropic` (optional) are extras.
 
 ## Run
 ```powershell
@@ -24,9 +24,9 @@ Without a unit, use `--demo-raw` (a saved `dump --raw` file) or `--from-raw` on 
 - `ge200/client.py`: `Ge200` (read state, select, load working copy, store a slot, upload IRs), `Snapshot`.
 - `ge200/preset.py`: the 512-byte preset layout: modules, wide values, expression pedal (`EXP_*`) and MERGE (`MERGE_*`), `apply_edit`.
 - `ge200/params.py`: knob labels per model (derived from the firmware), confidence tables.
-- `ge200/web/server.py` + `static/index.html`: the editor (localhost only, per-run token). `irlab.py`, `namlab.py`: IR import, NAM lab.
+- `ge200/web/server.py` + `static/index.html`: the editor (localhost only, per-run token). `irlab.py`: IR import.
 - `ge200/llm.py`, `tone.py`: provider layer and the tone generator. `rig.py`, `env.py`: rig profile, `.env` loader.
-- `ge200/ir.py`, `ge200/nam/`: IR format conversion, NAM render tools (run in a separate environment).
+- `ge200/ir.py`: IR format conversion (to the unit's 512-sample, 24-bit format).
 - `tools/`: one-off experiments, **several write to the device** (read each file's docstring first).
 - `PROTOCOL.md`: what is verified and what is only inferred. Keep it honest when you learn something.
 

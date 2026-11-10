@@ -29,7 +29,6 @@ USB 抓包得出，不包含任何厂商文件），并把整台设备以效果�
   会给出预设建议；结果会被限制在你自己预设所用的范围内，按下 Save 之前不会保存。
 - **自己的箱体 IR。** 拖入一个 WAV，查看将要发送的内容（512 个采样），命名后放入 10 个 IR 槽位之一。
 - **表情踏板。** 把 EXP 和 EXP2 分配给任何模块的任何旋钮，包括 **MERGE**（一个踏板同时驱动多个旋钮，每个旋钮从脚跟值走到脚尖值）。
-- **NAM 实验室。** 让 DI 录音经过 Neural Amp Modeler 采样和箱体 IR，离线试听。
 - **命令行与 Python 库。** 用脚本导出、比较、选择和保存预设。
 
 ## 工作原理
@@ -77,7 +76,6 @@ py -3 -m venv .venv
 | 表情踏板与 MERGE | 由设备的状态帧和固件自身的 MERGE 代码解出，并在 200 个预设上检查（115 个目标中有 114 个确实存在于该型号）。尚未实际踩踏板测试 |
 | 音色生成器 | Claude 已用真实 API 测试；其他提供方用本地模拟服务器测试 |
 | Raspberry Pi / Linux 传输 | 已编写，仅用模拟 I/O 测试 |
-| 实时 NAM | 在 Python 中不可行（已测量）。NAM 实验室是离线的 |
 
 详情和未解决的问题见 [PROTOCOL.md](PROTOCOL.md)；每个功能见 [docs/USAGE.md](docs/USAGE.md)。
 
@@ -89,7 +87,7 @@ py -3 -m venv .venv
 | `ge200/preset.py`, `params.py` | 512 字节的预设结构、表情踏板与 MERGE、各型号的旋钮名称 |
 | `ge200/web/` | 编辑器：本地服务器和单页效果器板界面 |
 | `ge200/llm.py`, `tone.py`, `rig.py` | AI 提供方、音色生成器、你的吉他和口味档案 |
-| `ge200/ir.py`, `ge200/nam/` | IR 转换、离线 NAM 渲染 |
+| `ge200/ir.py` | 把 IR 转换为设备的 512 采样格式 |
 | `tools/` | 一次性实验（有几个会写入设备：先读每个文件的说明） |
 | `PROTOCOL.md` | 哪些已验证，哪些只是推测 |
 | `AGENTS.md` | 给 AI 编程代理的说明 |
@@ -113,4 +111,4 @@ py -3 -m venv .venv
 
 [MIT](LICENSE)。与 Mooer 无关联，也未获其认可或赞助。所有产品名称归其所有者所有。欢迎贡献和提交 issue。
 
-<sub>关键词：Mooer GE200, 综合效果器, 吉他效果器, 预设编辑器, USB HID, 逆向工程, 表情踏板, 脉冲响应, 箱体 IR, Neural Amp Modeler, NAM, Windows, Python</sub>
+<sub>关键词：Mooer GE200, 综合效果器, 吉他效果器, 预设编辑器, USB HID, 逆向工程, 表情踏板, 脉冲响应, 箱体 IR, Windows, Python</sub>
