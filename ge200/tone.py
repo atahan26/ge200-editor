@@ -197,6 +197,8 @@ def sanitize_edit(edit: dict, base: Preset, presets: Dict[int, Preset],
         m, t = exp_in.get(n + "_module"), exp_in.get(n + "_target")
         if exp_valid(m, t):
             out["exp"][n + "_module"], out["exp"][n + "_target"] = m, t
+    out["merge"] = {"on": bool(base.merge.get("on", False)), "heel": list(base.merge.get("heel", [])),
+                    "toe": list(base.merge.get("toe", []))}      # the generator does not touch MERGE: the base's stays
     apply_edit(base.raw, out)           # raises EditError if something is still wrong
     return out
 

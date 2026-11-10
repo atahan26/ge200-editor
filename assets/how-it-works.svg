@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="960" height="440" role="img" aria-label="How GE200 Editor works: the browser editor talks to a local Python server, which talks to the GE200 over USB HID. The tone generator sends your description to an AI provider and loads the answer into the editor. IR files are converted to 512 samples and uploaded to one of ten IR slots.">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#B5451B"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; }
+      .t { font-size: 17px; font-weight: 700; fill: #1E1E1C; }
+      .s { font-size: 12.5px; fill: #6A665D; }
+      .lab { font-size: 14px; font-weight: 600; fill: #B5451B; }
+      .box { fill: #FFFFFF; stroke: #CFC8B8; stroke-width: 2; }
+      .arrow { stroke: #B5451B; stroke-width: 2.5; fill: none; marker-end: url(#a); }
+      .arrow2 { stroke: #B5451B; stroke-width: 2.5; fill: none; marker-end: url(#a); marker-start: url(#a); }
+    </style>
+  </defs>
+  <rect width="960" height="440" rx="16" fill="#F5F2EB"/>
+
+  <!-- row 1: editing -->
+  <text class="lab" x="30" y="40">Editing and saving</text>
+  <g>
+    <rect class="box" x="30" y="56" width="190" height="84" rx="12"/>
+    <text class="t" x="125" y="92" text-anchor="middle">Browser editor</text>
+    <text class="s" x="125" y="114" text-anchor="middle">pedalboard on localhost</text>
+    <rect class="box" x="270" y="56" width="190" height="84" rx="12"/>
+    <text class="t" x="365" y="92" text-anchor="middle">Python server</text>
+    <text class="s" x="365" y="114" text-anchor="middle">127.0.0.1 only, per-run token</text>
+    <rect class="box" x="510" y="56" width="190" height="84" rx="12"/>
+    <text class="t" x="605" y="92" text-anchor="middle">USB HID</text>
+    <text class="s" x="605" y="114" text-anchor="middle">reverse-engineered protocol</text>
+    <rect x="750" y="56" width="180" height="84" rx="12" fill="#1E1E1C"/>
+    <text x="840" y="92" text-anchor="middle" font-size="17" font-weight="700" fill="#F5F2EB">Mooer GE200</text>
+    <text x="840" y="114" text-anchor="middle" font-size="12.5" fill="#CFC8B8">200 presets, 10 IR slots</text>
+  </g>
+  <path class="arrow2" d="M224 98 H266"/>
+  <path class="arrow2" d="M464 98 H506"/>
+  <path class="arrow2" d="M704 98 H746"/>
+
+  <!-- row 2: tone generator -->
+  <text class="lab" x="30" y="186">Tone generator (optional)</text>
+  <g>
+    <rect class="box" x="30" y="202" width="190" height="84" rx="12"/>
+    <text class="t" x="125" y="238" text-anchor="middle">Your description</text>
+    <text class="s" x="125" y="260" text-anchor="middle">plus your rig and the preset</text>
+    <rect class="box" x="270" y="202" width="190" height="84" rx="12"/>
+    <text class="t" x="365" y="238" text-anchor="middle">AI provider</text>
+    <text class="s" x="365" y="260" text-anchor="middle">Claude, OpenAI, Gemini,</text>
+    <text class="s" x="365" y="276" text-anchor="middle">OpenRouter or a local model</text>
+    <rect class="box" x="510" y="202" width="190" height="84" rx="12"/>
+    <text class="t" x="605" y="238" text-anchor="middle">Preset as JSON</text>
+    <text class="s" x="605" y="260" text-anchor="middle">clamped to the ranges</text>
+    <text class="s" x="605" y="276" text-anchor="middle">your own presets use</text>
+    <rect class="box" x="750" y="202" width="180" height="84" rx="12"/>
+    <text class="t" x="840" y="238" text-anchor="middle">Loaded in the editor</text>
+    <text class="s" x="840" y="260" text-anchor="middle">you audition it;</text>
+    <text class="s" x="840" y="276" text-anchor="middle">nothing is saved yet</text>
+  </g>
+  <path class="arrow" d="M224 244 H266"/>
+  <path class="arrow" d="M464 244 H506"/>
+  <path class="arrow" d="M704 244 H746"/>
+
+  <!-- row 3: IRs -->
+  <text class="lab" x="30" y="332">Your own cabinet IRs</text>
+  <g>
+    <rect class="box" x="30" y="348" width="190" height="72" rx="12"/>
+    <text class="t" x="125" y="380" text-anchor="middle">WAV, FLAC or AIFF</text>
+    <text class="s" x="125" y="401" text-anchor="middle">drop it in the IRs tab</text>
+    <rect class="box" x="270" y="348" width="190" height="72" rx="12"/>
+    <text class="t" x="365" y="380" text-anchor="middle">Preview</text>
+    <text class="s" x="365" y="401" text-anchor="middle">512 samples, 44.1 kHz, 24 bit</text>
+    <rect class="box" x="510" y="348" width="190" height="72" rx="12"/>
+    <text class="t" x="605" y="380" text-anchor="middle">Safety check</text>
+    <text class="s" x="605" y="401" text-anchor="middle">slot must still hold what you saw</text>
+    <rect class="box" x="750" y="348" width="180" height="72" rx="12"/>
+    <text class="t" x="840" y="380" text-anchor="middle">IR slot 1 to 10</text>
+    <text class="s" x="840" y="401" text-anchor="middle">replaced for good</text>
+  </g>
+  <path class="arrow" d="M224 384 H266"/>
+  <path class="arrow" d="M464 384 H506"/>
+  <path class="arrow" d="M704 384 H746"/>
+</svg>

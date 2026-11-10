@@ -33,11 +33,15 @@ USB 抓包得出，不包含任何厂商文件），并把整台设备以效果�
 
 ## 工作原理
 
-```
- 浏览器编辑器 (localhost) --> Python 服务器 --> USB HID --> GE200
+<p align="center"><img src="assets/how-it-works.svg" alt="工作原理：浏览器编辑器与本地 Python 服务器通信，再通过 USB 与 GE200 通信；音色生成器和 IR 上传各有自己的路径" width="100%"></p>
 
- AI 提供方（可选） --> 给出预设建议 --> 限制在你自己的范围内 --> 编辑器 --> 由你按下 Save
-```
+## 更多界面
+
+<p align="center"><img src="assets/ir-import.png" alt="IRs 标签页" width="90%"><br><sub>自己的 IR：拖入文件，准确查看将要发送的内容，命名并选择 10 个槽位之一。</sub></p>
+
+<p align="center"><img src="assets/tone-generator.png" alt="显示结果的音色生成器" width="90%"><br><sub>音色生成器：描述音色，选择吉他和提供方。结果会载入编辑器，不会被保存。</sub></p>
+
+<p align="center"><img src="assets/my-rig.png" alt="My rig 对话框" width="90%"><br><sub>My rig：你的吉他、拾音器、调弦和口味只保存在你的电脑上，并加入音色生成器的提示。</sub></p>
 
 ## 快速开始
 

@@ -36,11 +36,15 @@ the whole unit in your browser, drawn like a pedalboard.
 
 ## How it works
 
-```
- Browser editor (localhost) --> Python server --> USB HID --> GE200
+<p align="center"><img src="assets/how-it-works.svg" alt="How it works: the browser editor talks to a local Python server and, over USB, to the GE200; the tone generator and the IR upload have their own paths" width="100%"></p>
 
- AI provider (optional) --> proposes a preset --> clamped to your own ranges --> editor --> you press Save
-```
+## More screens
+
+<p align="center"><img src="assets/ir-import.png" alt="The IRs tab" width="90%"><br><sub>Your own IRs: drop a file, see exactly what will be sent, name it and pick one of the 10 slots.</sub></p>
+
+<p align="center"><img src="assets/tone-generator.png" alt="The tone generator with an answer" width="90%"><br><sub>Tone generator: describe a tone, pick a guitar and a provider. The answer is loaded into the editor and not stored.</sub></p>
+
+<p align="center"><img src="assets/my-rig.png" alt="The My rig dialog" width="90%"><br><sub>My rig: your guitars, pickups, tuning and taste stay on your computer and are added to the tone generator's prompt.</sub></p>
 
 ## Quick start
 

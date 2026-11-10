@@ -76,6 +76,16 @@ class ExpToneTests(unittest.TestCase):
                          (self.base.exp["exp2_module"], self.base.exp["exp2_target"]))                  # CAB has no target 9
         self.assertEqual(tone.sanitize_edit(json_answer(), self.base, self.presets)["exp"], self.base.exp)  # missing = base
 
+    def test_generated_edit_keeps_the_base_merge_so_the_editor_can_load_it(self):
+        raw = bytearray(self.base.raw)
+        raw[126], raw[128 + 12], raw[182 + 12] = 1, 21, 33
+        base = Preset.from_bytes(1, bytes(raw))
+        out = tone.sanitize_edit(json_answer(), base, self.presets)
+        self.assertEqual(out["merge"]["on"], True)
+        self.assertEqual((out["merge"]["heel"][12], out["merge"]["toe"][12]), (21, 33))
+        self.assertEqual(len(out["merge"]["heel"]), 54)
+        self.assertEqual(apply_edit(base.raw, out)[126], 1)                    # and it applies cleanly
+
     def test_generate_returns_the_exp_edit(self):
         fake = FakeClient([good_answer(exp={"exp1_module": 0, "exp1_target": 0, "exp2_module": 1, "exp2_target": 0})])
         edit = tone.generate("wah lead", self.base, self.presets, client=fake)["edit"]

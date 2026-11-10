@@ -871,6 +871,7 @@ function toneView() {
       const body = { slot: cur.slot, description: text, edit: cur.edit, guitar: toneGuitar === "" ? null : parseInt(toneGuitar, 10) };
       if (provs.length && pv.value) { body.provider = pv.value; const m = md.value.trim(); if (m) body.model = m; }
       const r = await api("/api/tone", body);
+      if (!r.edit.merge) r.edit.merge = JSON.parse(JSON.stringify(cur.edit.merge));
       cur.edit = r.edit; renderEditor();
       const n2 = $("#tnote"); n2.dataset.result = "1"; n2.textContent = "";
       const warn = el("div", "", "Loaded into the editor, not sent to the unit yet. Turn your volume down first: levels were not tested.");

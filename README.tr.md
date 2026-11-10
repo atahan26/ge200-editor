@@ -36,11 +36,15 @@ ve cihazın tamamını tarayıcında, bir pedalboard gibi çizilmiş halde sunar
 
 ## Nasıl çalışır?
 
-```
- Tarayıcı editörü (localhost) --> Python sunucusu --> USB HID --> GE200
+<p align="center"><img src="assets/how-it-works.svg" alt="Nasıl çalışır: tarayıcı editörü yerel bir Python sunucusuyla, USB üzerinden de GE200 ile konuşur; ton üretici ve IR yükleme kendi yollarını izler" width="100%"></p>
 
- Yapay zeka sağlayıcısı (isteğe bağlı) --> preset önerir --> kendi aralıklarına sıkıştırılır --> editör --> Save'e sen basarsın
-```
+## Diğer ekranlar
+
+<p align="center"><img src="assets/ir-import.png" alt="IRs sekmesi" width="90%"><br><sub>Kendi IR'ların: dosyayı bırak, gönderilecek hali tam olarak gör, adını ver ve 10 slottan birini seç.</sub></p>
+
+<p align="center"><img src="assets/tone-generator.png" alt="Cevabı görünen ton üretici" width="90%"><br><sub>Ton üretici: bir ton tarif et, gitarı ve sağlayıcıyı seç. Cevap editöre yüklenir, saklanmaz.</sub></p>
+
+<p align="center"><img src="assets/my-rig.png" alt="My rig penceresi" width="90%"><br><sub>My rig: gitarların, manyetiklerin, akortların ve zevkin bilgisayarında kalır ve ton üreticinin istemine eklenir.</sub></p>
 
 ## Hızlı başlangıç
 

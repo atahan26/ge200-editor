@@ -33,11 +33,15 @@ USB 캡처로 알아냈으며 제조사 파일은 포함되어 있지 않습니�
 
 ## 동작 방식
 
-```
- 브라우저 편집기 (localhost) --> Python 서버 --> USB HID --> GE200
+<p align="center"><img src="assets/how-it-works.svg" alt="동작 방식: 브라우저 편집기는 로컬 Python 서버와, USB로 GE200과 통신하며 톤 생성기와 IR 업로드는 각자의 경로를 가집니다" width="100%"></p>
 
- AI 제공자 (선택) --> 프리셋 제안 --> 내 범위로 제한 --> 편집기 --> 내가 Save를 누름
-```
+## 더 많은 화면
+
+<p align="center"><img src="assets/ir-import.png" alt="IRs 탭" width="90%"><br><sub>나만의 IR: 파일을 놓으면 전송될 내용을 정확히 보여 주고, 이름을 붙여 10개 슬롯 중 하나를 고릅니다.</sub></p>
+
+<p align="center"><img src="assets/tone-generator.png" alt="답변이 표시된 톤 생성기" width="90%"><br><sub>톤 생성기: 톤을 설명하고 기타와 제공자를 고릅니다. 결과는 편집기에 로드될 뿐 저장되지 않습니다.</sub></p>
+
+<p align="center"><img src="assets/my-rig.png" alt="My rig 대화상자" width="90%"><br><sub>My rig: 기타, 픽업, 튜닝, 취향이 내 컴퓨터에 남고 톤 생성기의 프롬프트에 추가됩니다.</sub></p>
 
 ## 빠른 시작
 
