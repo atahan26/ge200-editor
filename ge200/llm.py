@@ -149,6 +149,19 @@ def check_model(model: str) -> str:
     return model
 
 
+def _model_ids(ids) -> List[str]:
+    """Unique, valid-looking model names in the order the provider gave them."""
+    out: List[str] = []
+    for i in ids:
+        if isinstance(i, str) and MODEL_RE.match(i) and i not in out:
+            out.append(i)
+    return out
+
+
+# OpenAI's list mixes in embeddings, speech, images and moderation models that cannot write a preset
+_NOT_CHAT = re.compile(r"embed|whisper|tts|dall-e|moderation|audio|realtime|image|transcribe|davinci|babbage|search|sora", re.I)
+
+
 def schema_instruction(schema: dict) -> str:
     return ("Reply with ONE JSON object only (no markdown, no commentary) that follows this JSON schema:\n"
             + json.dumps(schema, separators=(",", ":")))
@@ -178,6 +191,10 @@ class Provider:
 
     def complete(self, system: str, user: str, schema: dict, model: str, effort: str = "high") -> Completion:
         raise NotImplementedError
+
+    def list_models(self) -> List[str]:
+        """Model names the provider offers to this account (so nobody has to look them up by hand)."""
+        raise LlmError("this provider cannot list its models")
 
 
 class AnthropicProvider(Provider):
@@ -219,6 +236,14 @@ class AnthropicProvider(Provider):
         return self._client
 
     REST_URL = "https://api.anthropic.com/v1/messages"
+    MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000"
+
+    def list_models(self) -> List[str]:
+        key = _env("ANTHROPIC_API_KEY")
+        if not key:
+            raise LlmError("no API key: set ANTHROPIC_API_KEY")
+        data = post_json(self.MODELS_URL, {"x-api-key": key, "anthropic-version": "2023-06-01"}, None, timeout=30)
+        return _model_ids(x.get("id") for x in data.get("data", []) if isinstance(x, dict))
 
     def _complete_rest(self, system, user, schema, model) -> Completion:
         """Plain Messages API call for when the SDK is not installed (schema travels in the prompt)."""
@@ -276,11 +301,13 @@ class AnthropicProvider(Provider):
         return f"{type(e).__name__}: {e}"
 
 
-def post_json(url: str, headers: Dict[str, str], body: dict, timeout: float = 180.0) -> dict:
-    """POST JSON, return the decoded JSON answer. Errors become LlmError without echoing headers."""
+def post_json(url: str, headers: Dict[str, str], body: Optional[dict], timeout: float = 180.0) -> dict:
+    """POST JSON (GET when ``body`` is None) and return the decoded JSON answer. Errors become LlmError without
+    echoing headers."""
     if urllib.parse.urlparse(url).scheme not in ("http", "https"):
         raise LlmError("the provider URL must start with http:// or https://")
-    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), method="POST",
+    req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode("utf-8"),
+                                 method="GET" if body is None else "POST",
                                  headers={"Content-Type": "application/json", **headers})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -330,6 +357,19 @@ class OpenAIStyleProvider(Provider):
                 d.update(available=False, reason="set GE200_LLM_BASE_URL (Ollama: http://localhost:11434/v1)")
         return d
 
+    def list_models(self) -> List[str]:
+        base = self.base_url().rstrip("/")
+        if not base:
+            raise LlmError("no server address configured for this provider")
+        key = _env(*self.key_env) if self.key_env else ""
+        if self.needs_key and not key:
+            raise LlmError("no API key: set " + " or ".join(self.key_env))
+        data = post_json(base + "/models", {"Authorization": f"Bearer {key}"} if key else {}, None, timeout=30)
+        ids = _model_ids(x.get("id") for x in data.get("data", []) if isinstance(x, dict))
+        if self.id == "openai":
+            ids = [i for i in ids if not _NOT_CHAT.search(i)]
+        return sorted(ids)
+
     def complete(self, system, user, schema, model, effort="high") -> Completion:
         base = self.base_url().rstrip("/")
         if not base:
@@ -371,6 +411,17 @@ class GeminiProvider(Provider):
 
     def base_url(self) -> str:
         return self.BASE
+
+    def list_models(self) -> List[str]:
+        key = _env(*self.key_env)
+        if not key:
+            raise LlmError("no API key: set GEMINI_API_KEY (or GOOGLE_API_KEY)")
+        data = post_json(f"{self.base_url()}/models?pageSize=1000", {"x-goog-api-key": key}, None, timeout=30)
+        names = []
+        for m in data.get("models", []):
+            if isinstance(m, dict) and "generateContent" in (m.get("supportedGenerationMethods") or []):
+                names.append(str(m.get("name", "")).replace("models/", "", 1))
+        return sorted(_model_ids(names))
 
     def complete(self, system, user, schema, model, effort="high") -> Completion:
         key = _env(*self.key_env)

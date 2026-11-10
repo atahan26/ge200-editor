@@ -29,6 +29,16 @@ class FakeService:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def do_GET(self):
+                outer.requests.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": None})
+                status, payload = outer.replies.pop(0)
+                data = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
             def log_message(self, *a):
                 pass
 
@@ -271,3 +281,50 @@ class AnthropicRestTests(unittest.TestCase):
                 mock.patch.dict(os.environ, {"GE200_LLM_CONFIG": os.path.join(os.path.dirname(__file__), "none", "x.json")}):
             os.environ.pop("ANTHROPIC_API_KEY", None)
             self.assertFalse(llm.AnthropicProvider().info()["available"])
+
+
+class ModelListTests(unittest.TestCase):
+    def test_openai_list_hides_models_that_cannot_chat(self):
+        svc = FakeService([(200, {"data": [{"id": "gpt-x"}, {"id": "text-embedding-z"}, {"id": "whisper-1"}, {"id": "gpt-y"},
+                                           {"id": "bad name"}]})])
+        self.addCleanup(svc.close)
+        p = llm.OpenAIStyleProvider("openai", "OpenAI", svc.url, ["TEST_KEY"])
+        with mock.patch.dict(os.environ, {"TEST_KEY": "sk-secret"}):
+            self.assertEqual(p.list_models(), ["gpt-x", "gpt-y"])
+        self.assertEqual(svc.requests[0]["path"], "/models")
+        self.assertEqual(svc.requests[0]["headers"]["authorization"], "Bearer sk-secret")
+
+    def test_local_server_list_needs_no_key(self):
+        svc = FakeService([(200, {"data": [{"id": "llama3:8b"}, {"id": "qwen2.5"}]})])
+        self.addCleanup(svc.close)
+        p = llm.OpenAIStyleProvider("local", "Local", "", ["GE200_LLM_API_KEY"], needs_key=False)
+        with mock.patch.dict(os.environ, {"GE200_LLM_BASE_URL": svc.url}):
+            os.environ.pop("GE200_LLM_API_KEY", None)
+            self.assertEqual(p.list_models(), ["llama3:8b", "qwen2.5"])
+        self.assertNotIn("authorization", svc.requests[0]["headers"])
+
+    def test_gemini_list_keeps_only_generate_content_models_and_strips_prefix(self):
+        svc = FakeService([(200, {"models": [
+            {"name": "models/g-pro", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+            {"name": "models/g-embed", "supportedGenerationMethods": ["embedContent"]},
+            {"name": "models/g-flash", "supportedGenerationMethods": ["generateContent"]}]})])
+        self.addCleanup(svc.close)
+        p = llm.GeminiProvider()
+        p.BASE = svc.url
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "g-secret"}):
+            self.assertEqual(p.list_models(), ["g-flash", "g-pro"])
+        self.assertEqual(svc.requests[0]["headers"]["x-goog-api-key"], "g-secret")
+        self.assertNotIn("g-secret", svc.requests[0]["path"])
+
+    def test_anthropic_list_and_missing_key(self):
+        svc = FakeService([(200, {"data": [{"id": "claude-a"}, {"id": "claude-b"}]})])
+        self.addCleanup(svc.close)
+        p = llm.AnthropicProvider()
+        p.MODELS_URL = svc.url + "/v1/models?limit=1000"
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "k"}):
+            self.assertEqual(p.list_models(), ["claude-a", "claude-b"])
+        self.assertEqual(svc.requests[0]["headers"]["x-api-key"], "k")
+        with mock.patch.dict(os.environ, {"GE200_LLM_CONFIG": os.path.join(os.path.dirname(__file__), "none", "x.json")}):
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+            with self.assertRaises(llm.LlmError):
+                llm.AnthropicProvider().list_models()

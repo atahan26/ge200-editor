@@ -524,6 +524,11 @@ class Handler(BaseHTTPRequestHandler):
             slot = body.get("slot")
             if self.path == "/api/rig":
                 return self._json(200, {"rig": self.app.set_rig(body.get("rig"))})
+            if self.path == "/api/llm/models":
+                pid = body.get("provider")
+                if not isinstance(pid, str) or not pid.isalnum():
+                    raise EditError("invalid provider")
+                return self._json(200, {"models": llm.get_provider(pid).list_models()})
             if self.path == "/api/llm/config":
                 values = body.get("values")
                 if not isinstance(values, dict):

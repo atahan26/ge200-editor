@@ -197,6 +197,7 @@
   dialog::backdrop { background: #000a; }
   dialog h2 { margin: 0 0 4px; font: 700 18px var(--hw); }
   dialog label { display: block; font-size: 12px; color: var(--mute); margin-top: 10px; }
+  dialog select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
   dialog input, dialog textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
   dialog fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 12px 0 0; padding: 4px 12px 12px; }
   dialog legend { font-weight: 700; padding: 0 6px; font-family: var(--hw); }
@@ -605,6 +606,32 @@ function renderEditor() {
   updateDirty();
 }
 
+// ---------------------------------------------------------------- model lists
+// Every provider can list its models; show them as a menu instead of asking people to look the names up.
+const modelCache = {};
+async function loadModels(pid) {
+  if (!modelCache[pid]) modelCache[pid] = (await api("/api/llm/models", { provider: pid })).models;
+  return modelCache[pid];
+}
+async function attachModelPicker(pid, input, isCurrent, onError) {
+  if (input._pick) { input._pick.remove(); input._pick = null; }
+  input.hidden = false;
+  let list;
+  try { list = await loadModels(pid); } catch (e) { input.title = "Could not load the model list (" + e.message + "): type the name"; if (onError && (!isCurrent || isCurrent())) onError(e.message); return; }
+  if ((isCurrent && !isCurrent()) || !list.length || input._pick) return;
+  const sel = el("select"); sel.className = input.className; sel.setAttribute("aria-label", "Model");
+  const want = input.value.trim();
+  if (!want) sel.add(new Option("Choose a model...", ""));
+  (want && !list.includes(want) ? [want, ...list] : list).forEach(m => sel.add(new Option(m, m)));
+  sel.add(new Option("Other (type a name)...", "__other"));
+  sel.value = want || "";
+  sel.onchange = () => {
+    if (sel.value === "__other") { sel.remove(); input._pick = null; input.hidden = false; input.focus(); return; }
+    input.value = sel.value; input.dispatchEvent(new Event("change"));
+  };
+  input.after(sel); input._pick = sel; input.hidden = true;
+}
+
 // ---------------------------------------------------------------- tone request
 function readyProviders() { return ((S.tone && S.tone.providers) || []).filter(p => p.available); }
 function toneView() {
@@ -626,6 +653,7 @@ function toneView() {
   }
   gen.textContent = "Generate";
   const info = () => provs.find(x => x.id === pv.value);
+  const tellModelError = msg => { if (!note.dataset.result) note.textContent = (info() ? info().label + ": " : "") + msg; };
   const showInfo = () => {
     const pi = info(); if (!pi) return;
     const saved = store.get("ge200.model." + pi.id); md.value = saved || pi.default_model || "";
@@ -636,9 +664,10 @@ function toneView() {
     pv.hidden = md.hidden = false;
     provs.forEach(x => pv.add(new Option(x.label, x.id)));
     pv.value = (provs.find(x => x.id === store.get("ge200.provider")) || provs.find(x => x.id === T.default) || provs[0]).id;
-    pv.onchange = () => { store.set("ge200.provider", pv.value); note.dataset.result = ""; showInfo(); };
+    pv.onchange = () => { store.set("ge200.provider", pv.value); note.dataset.result = ""; showInfo(); const pid = pv.value; attachModelPicker(pid, md, () => pv.value === pid, tellModelError); };
     md.onchange = () => { store.set("ge200.model." + pv.value, md.value.trim()); };
     showInfo();
+    attachModelPicker(pv.value, md, () => pv.isConnected, tellModelError);
   }
   gen.onclick = async () => {
     const text = toneText.trim(); if (!text) { toast("Describe the tone first", true); return; }
@@ -681,6 +710,11 @@ function renderAiSetup() {
       if (type === "password") inp.placeholder = p.source === "saved" ? "saved: type to replace" : p.source === "environment" ? "set outside the editor: type to override" : "paste it here";
       else if (name.endsWith("_MODEL") && p.default_model) inp.placeholder = p.default_model;
       l.appendChild(inp); fs.appendChild(l);
+      if (name.endsWith("_MODEL") && p.available) attachModelPicker(p.id, inp, () => inp.isConnected, msg => {
+        if (fs.querySelector(".model-err")) return;
+        fs.appendChild(el("div", "note model-err", "Could not load the model list: " + msg));
+        if (/authentication/.test(msg)) { st.textContent = "key rejected"; st.className = "state no"; }
+      });
     }
     if (p.source === "saved") {
       const rm = el("button", "btn", "Forget this key"); rm.type = "button"; rm.style.marginTop = "8px";
