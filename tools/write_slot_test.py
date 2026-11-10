@@ -3,7 +3,7 @@
 Verifies by re-reading, and ALWAYS writes the slot's original content back afterwards.
 
 Usage:
-  python tools/write_slot_test.py SLOT noop     # write the slot's own content back (no change expected)
+  python tools/write_slot_test.py --write SLOT noop     # write the slot's own content back (no change expected)
   python tools/write_slot_test.py SLOT param    # change one DS parameter byte, verify it was stored, then restore
 """
 import sys
@@ -23,6 +23,10 @@ def send(dev: Ge200, cmd: int, data: bytes, wait: float = 2.0) -> None:
 
 
 def main() -> None:
+    if "--write" not in sys.argv:
+        raise SystemExit("this experiment writes to your GE200 (and restores it afterwards): add --write to confirm. "
+                         "Take a dump first: python -m ge200 dump backup.json --raw backup.bin")
+    sys.argv.remove("--write")
     slot, mode = int(sys.argv[1], 0), sys.argv[2]
     with Ge200() as dev:
         before = dev.read_state()

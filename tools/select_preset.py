@@ -1,7 +1,7 @@
 """EXPERIMENT (writes to the device): select a preset (CMD 0xA6 + 1 byte index), verify by re-reading the
 device state, then ALWAYS select the original preset again.
 
-Usage: python tools/select_preset.py TARGET_INDEX
+Usage: python tools/select_preset.py --write TARGET_INDEX
 """
 import sys
 import time
@@ -25,6 +25,10 @@ def live(snap):
 
 
 def main() -> None:
+    if "--write" not in sys.argv:
+        raise SystemExit("this experiment writes to your GE200 (and restores it afterwards): add --write to confirm. "
+                         "Take a dump first: python -m ge200 dump backup.json --raw backup.bin")
+    sys.argv.remove("--write")
     target = int(sys.argv[1], 0)
     with Ge200() as dev:
         before = dev.read_state()

@@ -4,7 +4,7 @@ Format deduced from the vendor editor (state-push builders): CMD 0x90..0x99, pay
 big-endian values ``[enable, type, params...]`` -- the same layout the device itself reports in the hello reply.
 
 Usage:
-  python tools/send_block.py CMD            # send back EXACTLY the values the device just reported (no-op)
+  python tools/send_block.py --write CMD            # send back EXACTLY the values the device just reported (no-op)
   python tools/send_block.py CMD v0 v1 ...  # send explicit 16-bit values (a real change!)
 """
 import sys
@@ -15,6 +15,10 @@ from ge200.client import Ge200, Snapshot
 
 
 def main() -> None:
+    if "--write" not in sys.argv:
+        raise SystemExit("this experiment writes to your GE200 (and restores it afterwards): add --write to confirm. "
+                         "Take a dump first: python -m ge200 dump backup.json --raw backup.bin")
+    sys.argv.remove("--write")
     cmd = int(sys.argv[1], 0)
     values = [int(x, 0) for x in sys.argv[2:]]
     with Ge200() as dev:

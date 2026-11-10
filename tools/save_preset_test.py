@@ -2,7 +2,7 @@
 ACTIVE slot". Selects SLOT, sends 0x83, verifies by re-reading, and always restores slot + active preset.
 
 Usage:
-  python tools/save_preset_test.py SLOT noop      # save the slot's own current content back (no change expected)
+  python tools/save_preset_test.py --write SLOT noop      # save the slot's own current content back (no change expected)
   python tools/save_preset_test.py SLOT rename    # change the name to 'GE200LIB TEST', verify, then restore
 """
 import sys
@@ -23,6 +23,10 @@ def send(dev: Ge200, cmd: int, data: bytes, wait: float = 1.0) -> None:
 
 
 def main() -> None:
+    if "--write" not in sys.argv:
+        raise SystemExit("this experiment writes to your GE200 (and restores it afterwards): add --write to confirm. "
+                         "Take a dump first: python -m ge200 dump backup.json --raw backup.bin")
+    sys.argv.remove("--write")
     slot, mode = int(sys.argv[1], 0), sys.argv[2]
     with Ge200() as dev:
         before = dev.read_state()

@@ -1,7 +1,7 @@
 """EXPERIMENT (writes to the device): change ONE value of a module-state frame, re-read the device state to see
 what changed (live edit buffer 0x86? stored preset 0xA5?), then ALWAYS write the original values back.
 
-Usage: python tools/change_and_restore.py CMD VALUE_INDEX NEW_VALUE
+Usage: python tools/change_and_restore.py --write CMD VALUE_INDEX NEW_VALUE
 Example: python tools/change_and_restore.py 0x91 0 0     # switch the DS/OD block off
 """
 import sys
@@ -25,6 +25,10 @@ def get(snap, cmd):
 
 
 def main() -> None:
+    if "--write" not in sys.argv:
+        raise SystemExit("this experiment writes to your GE200 (and restores it afterwards): add --write to confirm. "
+                         "Take a dump first: python -m ge200 dump backup.json --raw backup.bin")
+    sys.argv.remove("--write")
     cmd, idx, new = int(sys.argv[1], 0), int(sys.argv[2], 0), int(sys.argv[3], 0)
     with Ge200() as dev:
         before = dev.read_state()
