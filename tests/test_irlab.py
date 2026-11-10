@@ -93,20 +93,20 @@ class IrLabTests(unittest.TestCase):
         self.assertEqual(self.post("/api/ir/preview", {"file": "sub/My Cab 57.wav"}, token=False)[0], 403)
 
     def test_upload_needs_the_name_the_user_saw_and_updates_the_names(self):
-        body = {"slot": 9, "name": "York v30 57", "file": "sub/My Cab 57.wav"}
+        body = {"slot": 9, "name": "My cab ir", "file": "sub/My Cab 57.wav"}
         code, r = self.post("/api/ir/upload", dict(body, replace="SOMETHING ELSE"))
         self.assertEqual(code, 400)                                    # stale page: slot holds a different IR
         self.assertEqual(self.backend.log, [])
         code, r = self.post("/api/ir/upload", dict(body, replace=""))
         self.assertEqual(code, 200)
-        self.assertEqual(r["name"], "YORK V30 57")
-        self.assertEqual(r["slots"][9], "YORK V30 57")
-        self.assertEqual(self.backend.log, ["ir 9 YORK V30 57"])
+        self.assertEqual(r["name"], "MY CAB IR")
+        self.assertEqual(r["slots"][9], "MY CAB IR")
+        self.assertEqual(self.backend.log, ["ir 9 MY CAB IR"])
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/state") as resp:
-            self.assertEqual(json.loads(resp.read())["ir_names"][9], "YORK V30 57")
+            self.assertEqual(json.loads(resp.read())["ir_names"][9], "MY CAB IR")
         # the next upload to that slot must name the new holder
         self.assertEqual(self.post("/api/ir/upload", dict(body, replace=""))[0], 400)
-        self.assertEqual(self.post("/api/ir/upload", dict(body, replace="YORK V30 57"))[0], 200)
+        self.assertEqual(self.post("/api/ir/upload", dict(body, replace="MY CAB IR"))[0], 200)
 
     def test_upload_validates_slot_and_name_and_token(self):
         base = {"name": "X", "file": "sub/My Cab 57.wav", "replace": ""}

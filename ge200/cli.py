@@ -107,6 +107,29 @@ def cmd_dump(args) -> int:
     return 0
 
 
+def cmd_diff(args) -> int:
+    """Offline: compare two `dump` files and list the preset bytes that differ (to find what a setting stores)."""
+    def load(path):
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        return {p["index"]: (p.get("name", ""), bytes.fromhex(p["raw"])) for p in doc["presets"]}
+    a, b = load(args.a), load(args.b)
+    changed = 0
+    for i in sorted(set(a) & set(b)):
+        (name, ra), (_n2, rb) = a[i], b[i]
+        if ra == rb:
+            continue
+        changed += 1
+        diffs = [(o, ra[o], rb[o]) for o in range(min(len(ra), len(rb))) if ra[o] != rb[o]]
+        print(f"preset {i} ({name}): {len(diffs)} byte(s) differ")
+        for o, x, y in diffs[:args.max]:
+            print(f"  [{o:3}] {x:3} -> {y:3}   ({x:#04x} -> {y:#04x})")
+        if len(diffs) > args.max:
+            print(f"  ... {len(diffs) - args.max} more")
+    print(f"{changed} preset(s) differ, {len(set(a) & set(b)) - changed} identical")
+    return 0
+
+
 def _require_write_flag(args) -> None:
     if not args.write:
         raise SystemExit("this command changes the device: add --write to confirm")
@@ -219,6 +242,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     iu.add_argument("file")
     iu.add_argument("--name", help="name shown on the unit (15 characters)")
     iu.set_defaults(fn=cmd_ir_upload)
+    df = sub.add_parser("diff", help="offline: show which preset bytes differ between two dumps")
+    df.add_argument("a")
+    df.add_argument("b")
+    df.add_argument("--max", type=int, default=60, help="bytes to list per preset")
+    df.set_defaults(fn=cmd_diff)
     d = sub.add_parser("dump", parents=[common])
     d.add_argument("output")
     d.add_argument("--raw", metavar="FILE", help="also save the raw HID reports")

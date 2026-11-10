@@ -220,7 +220,7 @@ The preset's CAB model numbers 27..36 are the ten **user IR slots** (IR-1..IR-10
 56..65 are ten user amp slots ("EMPTY" until something is imported). The editor imports IRs from `*.wav` / `*.GIR`
 and amps from `*.amp` / `*.GNR` files.
 
-IR upload (`ge200/ir.py` implements the conversion and the frames). **[V]** One upload (`ir-upload 9 file --name "YORK V30 57" --write`, 512-sample 24-bit file) was accepted by a real unit: the next hello reply showed the new name in entry 9 of name table 0x85 and nothing else in the tables changed. Whether the IR *sounds* right (level, polarity, which cab model number selects it) has not been judged by ear yet:
+IR upload (`ge200/ir.py` implements the conversion and the frames). **[V]** One upload of a third-party cabinet IR (not part of this repository) (`ir-upload 9 file --name "MY CAB IR" --write`, 512-sample 24-bit file) was accepted by a real unit: the next hello reply showed the new name in entry 9 of name table 0x85 and nothing else in the tables changed. Whether the IR *sounds* right (level, polarity, which cab model number selects it) has not been judged by ear yet:
 - Device audio rate is 44.1 kHz (USB audio descriptor [V]). An IR is **512 samples, 24-bit signed**. The editor takes the
   first 512 samples of the file unchanged (no resampling or normalisation seen), converts each with
   `trunc(clamp(x, +-0.99999899) * 2^23)` to 24-bit two's complement.

@@ -280,7 +280,7 @@
     <div class="irgrid">
       <div>
         <div class="drop" id="ir-drop"><b>Drop an IR file here</b> (WAV, FLAC or AIFF)<br>or <button class="btn" id="ir-pick" type="button">Choose a file</button><input type="file" id="ir-file" accept=".wav,.flac,.aif,.aiff,audio/*" hidden></div>
-        <div class="irform" id="ir-folderrow" hidden><label style="flex:1">Or pick one from your IR folder<select id="ir-folder"></select></label></div>
+        <div class="irform" id="ir-folderrow" hidden><label style="flex:1">Or pick a file from the IR folder you started the editor with<select id="ir-folder"></select><span class="note" id="ir-folderpath" style="margin:2px 0 0"></span></label></div>
         <canvas id="ir-wave" width="720" height="150" aria-label="Preview of the converted impulse response"></canvas>
         <div class="irfacts" id="ir-facts">No file chosen yet.</div>
         <div class="irform">
@@ -813,6 +813,7 @@ async function loadIr() {
   st.textContent = IR.available ? "" : "IR tools unavailable: " + IR.reason;
   const fr = $("#ir-folderrow"), sel = $("#ir-folder");
   fr.hidden = !IR.files.length; sel.textContent = ""; sel.add(new Option("(choose)", ""));
+  $("#ir-folderpath").textContent = IR.folder ? IR.folder + " (option --ir-dir; nothing from it is stored anywhere else)" : "";
   IR.files.forEach(f => sel.add(new Option(f, f)));
   renderIrSlots(); updateIrButton();
 }
