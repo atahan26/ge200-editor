@@ -156,6 +156,14 @@ class WebTests(unittest.TestCase):
         self.assertEqual(backup["presets"][0]["name"], "P0")              # the backup holds the OLD content
         self.assertEqual(self.backend.log, ["write 0"])
 
+    def test_saving_identical_content_writes_nothing(self):
+        code, r = self.call("/api/save", {"slot": 0, "edit": {}})
+        self.assertEqual((code, r["ok"], r.get("unchanged")), (200, True, True))
+        code, r = self.call("/api/save", {"slot": 0, "edit": {"name": "P0"}})        # same name as stored
+        self.assertTrue(r.get("unchanged"))
+        self.assertEqual(self.backend.log, [])
+        self.assertEqual(os.listdir(self.tmp.name), [])                               # not even a backup was needed
+
     def test_bad_requests(self):
         self.assertEqual(self.call("/api/save", {"slot": 0, "edit": {"chain_order": [1, 2]}})[0], 400)
         self.assertEqual(self.call("/api/select", {"slot": 500})[0], 400)

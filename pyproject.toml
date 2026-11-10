@@ -5,6 +5,10 @@ description = "Unofficial, read-only Python access to the Mooer GE200 (Windows, 
 requires-python = ">=3.9"
 readme = "README.md"
 
+[project.optional-dependencies]
+llm = ["anthropic"]          # only for the tone generator (ge200.tone / web editor "Generate")
+audio = ["numpy", "scipy", "soundfile"]   # impulse-response / capture file handling
+
 [project.scripts]
 ge200 = "ge200.cli:main"
 

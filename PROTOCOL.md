@@ -183,6 +183,24 @@ number of entries in the editor's model-name tables:
 - The device sends nothing unsolicited (no notification when a preset is changed on the unit itself): a host
   that wants to know the active preset has to ask with a hello (16 s).
 
+## IR slots and amp import [S: static analysis of the editor, NOT yet tried on the device]
+The preset's CAB model numbers 27..36 are the ten **user IR slots** (IR-1..IR-10 -> slot 0..9) and the amp models
+56..65 are ten user amp slots ("EMPTY" until something is imported). The editor imports IRs from `*.wav` / `*.GIR`
+and amps from `*.amp` / `*.GNR` files.
+
+IR upload (`ge200/ir.py` implements the conversion and the frames; the device behaviour is still to be verified):
+- Device audio rate is 44.1 kHz (USB audio descriptor [V]). An IR is **512 samples, 24-bit signed**. The editor takes the
+  first 512 samples of the file unchanged (no resampling or normalisation seen), converts each with
+  `trunc(clamp(x, +-0.99999899) * 2^23)` to 24-bit two's complement.
+- Upload = four `CMD 0xE1` frames, payload `[slot 0..9][phase][data]`: phase 1 = the 512 high bytes, phase 2 = the 512
+  middle bytes, phase 3 = the 512 low bytes (one byte per sample each), phase 4 = the 15-byte name (upper-case ASCII,
+  NUL padded). LEN = 515 for phases 1-3, 18 for phase 4.
+- Clear a slot: `CMD 0xE4` with the slot number (the editor then shows the name `EMPTY`).
+- No acknowledgement frame is known; the IR names (ten 15-byte entries) are in the hello reply (0x85 / 0xE3).
+
+Amp import (`*.amp` / `*.GNR`) uses `CMD 0xE2` in phases as well (name up to 20 chars plus a data block). Those files are
+Mooer's own capture format; its layout is unknown (no sample file analysed), and a NAM model is not that format.
+
 ## Editor start-up behaviour [S, partly confirmed by wire test]
 - On start the sender state is initialised to 0xE0, so the hello is the editor's first packet; the
   device answers it with the full dump (confirmed above).

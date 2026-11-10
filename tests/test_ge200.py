@@ -65,6 +65,28 @@ class PresetTests(unittest.TestCase):
             Preset.from_bytes(0, b"\0" * 10)
 
 
+class EnvTests(unittest.TestCase):
+    def test_parse(self):
+        from ge200.env import parse
+        got = parse("# c\nA=1\nexport B = 'two words'\nC=\"x\"\nD=val # note\nbad line\n=nokey\n")
+        self.assertEqual(got, {"A": "1", "B": "two words", "C": "x", "D": "val"})
+
+    def test_load_does_not_override_real_environment(self):
+        import os, tempfile
+        from pathlib import Path
+        from ge200.env import load_env
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / ".env"
+            p.write_text("GE200_T1=from_file\nGE200_T2=from_file\n", encoding="utf-8")
+            os.environ["GE200_T2"] = "real"
+            try:
+                load_env([p])
+                self.assertEqual((os.environ["GE200_T1"], os.environ["GE200_T2"]), ("from_file", "real"))
+            finally:
+                os.environ.pop("GE200_T1", None)
+                os.environ.pop("GE200_T2", None)
+
+
 class FakeHid:
     def __init__(self):
         self.sent = []

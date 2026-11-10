@@ -22,7 +22,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import List, Optional
 
+from .. import params as param_info
 from .. import protocol as p
+from .. import rig as rig_mod
+from .. import tone
 from ..client import Ge200, Snapshot, load_raw
 from ..preset import EditError, Preset, apply_edit, param_ranges
 
@@ -222,9 +225,12 @@ class DeviceBackend:
 
 
 class App:
-    def __init__(self, backend, names=None, backup_dir: Optional[str] = None) -> None:
+    def __init__(self, backend, names=None, backup_dir: Optional[str] = None, rig_path=None, nam=None) -> None:
+        self.nam = nam                                              # NamLab or None
         self.backend, self.names = backend, names or {}
         self.backup_dir = backup_dir
+        self.rig_path = Path(rig_path) if rig_path else None        # None = keep the rig in memory only
+        self.rig: dict = rig_mod.load(self.rig_path) if self.rig_path else {}
         self.lock = threading.RLock()            # serialises all device access
         self.cv = threading.Condition()          # guards epoch / pending
         self.token = secrets.token_hex(16)
@@ -236,6 +242,8 @@ class App:
         self.pending = None                      # (epoch, slot, raw) newest live update not yet sent
         self.last_error: Optional[str] = None
         self.verify: Optional[dict] = None       # read-back check of the last save
+        self.llm_client = None                   # injected in tests; None = create the Anthropic client on demand
+        self.llm_model = tone.DEFAULT_MODEL
         self.log = collections.deque(maxlen=300)
         self.refresh()
         self._stop = False
@@ -267,12 +275,43 @@ class App:
             "ranges": param_ranges(list(s.presets.values())),
             "backup_dir": self.backup_dir,
             "backed_up": self.backed_up,
+            "tone": ({"available": True, "reason": ""} if self.llm_client is not None else tone.available()),
+            "rig": self.rig,
+            "rig_fields": rig_mod.GENERAL_FIELDS,
+            "guitar_fields": rig_mod.GUITAR_FIELDS,
+            "params": param_info.PARAMS,
         }
 
     def stored(self, slot: int) -> Preset:
         if slot not in self.snap.presets:
             raise EditError(f"no preset {slot}")
         return self.snap.presets[slot]
+
+    def set_rig(self, rig: dict) -> dict:
+        cleaned = rig_mod.clean(rig)
+        if self.rig_path:
+            rig_mod.save(cleaned, self.rig_path)
+        self.rig = cleaned
+        self._log("rig saved")
+        return self.rig
+
+    def tone(self, slot: int, description: str, base_edit: Optional[dict] = None,
+             guitar_index: Optional[int] = None) -> dict:
+        """Ask the LLM for a preset edit. Never touches the device; takes no device lock (the call can take a minute)."""
+        base = self.stored(slot)
+        if base_edit:                                   # start from what is currently in the editor
+            base = Preset.from_bytes(slot, apply_edit(base.raw, base_edit))
+        guitar = None
+        if guitar_index is not None:
+            names = rig_mod.guitar_names(self.rig)
+            if not isinstance(guitar_index, int) or not 0 <= guitar_index < len(names):
+                raise EditError("unknown guitar")
+            guitar = f"Guitar {guitar_index + 1}, {names[guitar_index]}"
+        self._log(f"tone request for slot {slot} ({len(description)} chars, guitar={guitar})")
+        res = tone.generate(description, base, dict(self.snap.presets), self.names,
+                            client=self.llm_client, model=self.llm_model, rig=self.rig, guitar=guitar)
+        self._log("tone: ok")
+        return res
 
     def backup(self) -> str:
         if not self.backup_dir:
@@ -357,6 +396,10 @@ class App:
             with self.cv:
                 self.pending = None
             raw = apply_edit(self.stored(slot).raw, edit)
+            if raw == self.stored(slot).raw:       # identical to what is stored: do not wear the flash for nothing
+                self._log(f"save {slot}: unchanged, nothing written")
+                return {"ok": True, "pending": False, "unchanged": True,
+                        "preset": self.stored(slot).to_dict(self.names)}
             if not self.backed_up:
                 if not self.backup_dir:
                     raise EditError("refusing to write without a backup directory (--backup-dir)")
@@ -425,6 +468,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.app.state())
             if self.path == "/api/log":
                 return self._json(200, list(self.app.log))
+            if self.path == "/api/nam":
+                if self.app.nam is None:
+                    return self._json(200, {"available": False, "reason": "NAM lab not configured (--nam-dir)",
+                                            "models": [], "irs": [], "dis": [], "folders": {}})
+                return self._json(200, self.app.nam.listing())
+            if self.path.startswith("/api/nam/audio/"):
+                if self.app.nam is None:
+                    return self._json(404, {"error": "not found"})
+                try:
+                    return self._send(200, self.app.nam.audio(self.path.rsplit("/", 1)[1]), "audio/wav")
+                except KeyError:
+                    return self._json(404, {"error": "no such render"})
             if self.path == "/api/status":
                 return self._json(200, {"verify": self.app.verify_status(), "error": self.app.last_error,
                                         "reader_error": getattr(self.app.backend, "error", None)})
@@ -448,6 +503,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(413, {"error": "too large"})
             body = json.loads(self.rfile.read(n) or b"{}")
             slot = body.get("slot")
+            if self.path == "/api/rig":
+                return self._json(200, {"rig": self.app.set_rig(body.get("rig"))})
+            if self.path == "/api/nam/render":
+                if self.app.nam is None:
+                    raise ValueError("NAM lab not configured (--nam-dir)")
+                return self._json(200, self.app.nam.render(str(body.get("model", "")), str(body.get("ir", "")),
+                                                           str(body.get("di", "")), body.get("gain_db", 0)))
             if self.path not in ("/api/refresh", "/api/backup") and (
                     not isinstance(slot, int) or not 0 <= slot <= 199):
                 raise EditError("slot must be an integer 0..199")
@@ -471,8 +533,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.app.state())
             if self.path == "/api/backup":
                 return self._json(200, {"path": self.app.backup()})
+            if self.path == "/api/tone":
+                desc = body.get("description")
+                if not isinstance(desc, str):
+                    raise EditError("description must be a string")
+                return self._json(200, self.app.tone(slot, desc, edit or None, body.get("guitar")))
             self._json(404, {"error": "not found"})
-        except (EditError, ValueError, KeyError, json.JSONDecodeError) as e:
+        except (EditError, ValueError, KeyError, json.JSONDecodeError, tone.ToneError, rig_mod.RigError) as e:
             self._json(400, {"error": str(e)})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})
@@ -490,13 +557,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--names", metavar="FILE", help="local JSON model-name table (tools/extract_names.py)")
     ap.add_argument("--backup-dir", metavar="DIR", required=True, help="where the automatic pre-write backup goes")
     ap.add_argument("--demo-raw", metavar="FILE", help="use a saved raw dump in memory instead of the device")
+    ap.add_argument("--nam-dir", metavar="DIR", help="folder with your .nam captures (enables the NAM lab)")
+    ap.add_argument("--ir-dir", metavar="DIR", help="folder with cabinet IR wav files")
+    ap.add_argument("--di-dir", metavar="DIR", help="folder with DI guitar recordings to render")
+    ap.add_argument("--nam-python", metavar="EXE", help="python of the NAM environment (default: <repo>/.venv-nam)")
     args = ap.parse_args(argv)
     names = json.load(open(args.names, encoding="utf-8")) if args.names else {}
     if args.demo_raw:
         backend = MemoryBackend(Snapshot.from_reports(load_raw(open(args.demo_raw, "rb").read())))
     else:
         backend = DeviceBackend()
-    app = App(backend, names, args.backup_dir)
+    from ..env import load_env
+    load_env()
+    nam = None
+    if args.nam_dir:
+        from .namlab import NamLab
+        py = args.nam_python or str(Path(__file__).resolve().parents[2] / ".venv-nam" / "Scripts" / "python.exe")
+        nam = NamLab(args.nam_dir, args.ir_dir, args.di_dir, py)
+    app = App(backend, names, args.backup_dir, rig_mod.default_path(), nam)
     srv = make_server(app, args.port)
     print(f"GE200 editor on http://127.0.0.1:{srv.server_address[1]}/  ({'DEMO, in memory' if args.demo_raw else 'device'})",
           flush=True)

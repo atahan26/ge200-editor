@@ -43,12 +43,30 @@
   .card h3 { margin:0 0 8px; font-size:13px; display:flex; gap:8px; align-items:center; }
   .card h3 .sp { flex:1; }
   .card select, .card input[type=number] { padding:3px 4px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); max-width:170px; }
-  .param { display:grid; grid-template-columns: 52px 1fr 52px; gap:8px; align-items:center; margin:4px 0; font-size:12px; color:var(--mute); }
+  .param { display:grid; grid-template-columns: 92px 1fr 52px; gap:8px; align-items:center; margin:4px 0; font-size:12px; color:var(--mute); }
+  dialog { border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--ink); width:min(560px, 94vw); padding:16px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog label { display:block; font-size:12px; color:var(--mute); margin-top:10px; }
+  dialog input, dialog textarea { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  dialog { max-height: 90vh; overflow:auto; }
+  dialog fieldset.gcard { border:1px solid var(--line); border-radius:8px; margin:10px 0 0; padding:4px 12px 12px; }
+  dialog fieldset.gcard legend { color:var(--accent); font-weight:600; padding:0 6px; }
+  dialog .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   .param input[type=range] { width:100%; accent-color: var(--accent); }
   .param input[type=number] { width:52px; }
   #status { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:8px 14px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
   #status.show { opacity:.95; } #status.err { background:var(--bad); color:#fff; }
+  nav.tabs { display:flex; gap:4px; }
+  nav.tabs button.on { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .namgrid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+  .namgrid label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--mute); }
+  .namgrid select, .namgrid input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  [hidden] { display:none !important; }
   .note { color:var(--mute); font-size:12px; margin-top:12px; }
+  .tone { border:1px dashed var(--line); border-radius:8px; padding:10px 12px; margin-bottom:14px; }
+  .tone .trow { display:flex; gap:8px; align-items:stretch; }
+  .tone textarea { flex:1; resize:vertical; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font:inherit; }
+  .tone .note { margin-top:8px; display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
   label.inl { display:flex; gap:6px; align-items:center; color:var(--mute); font-size:12px; }
   .dirty { color:var(--accent); font-size:12px; font-weight:600; }
 </style>
@@ -56,8 +74,10 @@
 <body>
 <header>
   <h1>GE200 editor</h1>
+  <nav class="tabs"><button id="tab-presets" class="on">Device presets</button><button id="tab-nam">NAM lab</button></nav>
   <span class="meta" id="meta">connecting...</span>
   <span class="spacer"></span>
+  <button id="rig" title="Your guitar, pickups and taste: used by the tone generator">My rig</button>
   <button id="refresh" title="Read everything from the device again">Refresh</button>
   <button id="backup" title="Save a full JSON backup now">Backup now</button>
 </header>
@@ -68,6 +88,28 @@
   </aside>
   <section id="editor"><p class="note">Pick a preset on the left.</p></section>
 </main>
+<main id="namlab" hidden style="display:block">
+  <section>
+    <h2 style="margin:0 0 4px;font-size:16px">NAM lab</h2>
+    <p class="note" style="margin-top:0">A second engine next to the GE200: render a DI recording through one of your NAM captures and a cabinet IR, and listen to the result. Rendering runs offline in a separate environment (about 10x faster than real time for a standard model). It does not touch the device.</p>
+    <div id="namstate" class="note"></div>
+    <div class="namgrid">
+      <label>NAM capture<select id="nam-model"></select></label>
+      <label>Cabinet IR<select id="nam-ir"></select></label>
+      <label>DI recording<select id="nam-di"></select></label>
+      <label>Input gain (dB)<input id="nam-gain" type="number" value="0" min="-40" max="40" step="1"></label>
+    </div>
+    <div class="bar" style="margin-top:12px"><button id="nam-render" class="primary">Render</button><span id="nam-info" class="note" style="margin:0"></span></div>
+    <audio id="nam-audio" controls style="width:100%;margin-top:10px" hidden></audio>
+    <div id="nam-meta" class="note"></div>
+  </section>
+</main>
+<dialog id="rigdlg"><form method="dialog" id="rigform">
+  <h2 style="margin:0 0 4px;font-size:16px">My rig</h2>
+  <div class="note" style="margin:0">Stored on this computer only (outside the repository). It is added to the tone generator's prompt, so what you write here is sent to the Anthropic API when you press Generate.</div>
+  <div id="rigfields"></div>
+  <div class="actions"><button type="button" id="rigcancel">Cancel</button><button type="button" id="rigsave" class="primary">Save rig</button></div>
+</form></dialog>
 <div id="status"></div>
 <script>
 "use strict";
@@ -147,6 +189,8 @@ function scheduleLive() {
     } catch (e) { toast(e.message, true); }
   }, 150);
 }
+let toneText = "";
+let toneGuitar = "";
 let verifyTimer = null;
 function pollVerify() {
   clearInterval(verifyTimer);
@@ -186,10 +230,39 @@ function renderEditor() {
       const r = await api("/api/save", { slot: cur.slot, edit: cur.edit });
       cur.stored = r.preset; cur.edit = editFrom(r.preset);
       await loadState(); renderEditor();
-      if (r.ok === null && r.pending) { toast("Saved. Verifying..."); pollVerify(); }
+      if (r.unchanged) toast("Nothing to save: identical to what is stored (nothing was written)");
+      else if (r.ok === null && r.pending) { toast("Saved. Verifying..."); pollVerify(); }
       else if (r.ok === null) toast("Saved to slot " + cur.slot + ". (Press Refresh to re-read the whole device and verify.)");
       else toast(r.ok ? "Saved and verified on the device" : "Saved, but read-back differs!", !r.ok);
     } catch (err) { toast(err.message, true); }
+  };
+  // tone generator (LLM)
+  const tg = document.createElement("div"); tg.className = "tone";
+  const ok = S.tone && S.tone.available;
+  tg.innerHTML = `<div class="trow"><textarea id="desc" rows="2" maxlength="1000" placeholder="Describe a tone, e.g. 'dreamy clean with a long shimmery reverb and a touch of chorus'"></textarea>
+    <div style="display:flex;flex-direction:column;gap:6px"><select id="tguitar" title="Which guitar you will play this with"></select>
+    <button id="gen" ${ok ? "" : "disabled"}>Generate</button></div></div>
+    <div class="note" id="tnote"></div>`;
+  ed.appendChild(tg);
+  const gs = $("#tguitar"); gs.add(new Option("(any guitar)", ""));
+  ((S.rig && S.rig.guitars) || []).forEach((g, i) => gs.add(new Option(g.name || "Guitar " + (i + 1), i)));
+  gs.value = toneGuitar; gs.onchange = () => { toneGuitar = gs.value; };
+  $("#desc").value = toneText;
+  $("#desc").oninput = ev => { toneText = ev.target.value; };
+  $("#tnote").textContent = ok ? (S.tone.reason ? "Note: " + S.tone.reason : "") : "Tone generator unavailable: " + (S.tone ? S.tone.reason : "");
+  $("#gen").onclick = async () => {
+    const text = toneText.trim(); if (!text) { toast("Describe the tone first", true); return; }
+    const b = $("#gen"); b.disabled = true; b.textContent = "Generating...";
+    try {
+      const r = await api("/api/tone", { slot: cur.slot, description: text, edit: cur.edit, guitar: toneGuitar === "" ? null : parseInt(toneGuitar, 10) });
+      cur.edit = r.edit; renderEditor();
+      $("#tnote").innerHTML = ""; const n = document.createElement("div"); n.textContent = r.notes || "Done.";
+      const warn = document.createElement("div"); warn.style.color = "var(--accent)";
+      warn.textContent = "Loaded into the editor, not sent to the device yet. Turn your volume down first: levels were not tested.";
+      const au = document.createElement("button"); au.textContent = "Audition now"; au.onclick = async () => {
+        try { await api("/api/live", { slot: cur.slot, edit: cur.edit, epoch }); toast("Sent to the device (working copy only)"); } catch (e) { toast(e.message, true); } };
+      $("#tnote").append(n, warn, au);
+    } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = "Generate"; }
   };
   // chain order
   const chain = document.createElement("div"); chain.className = "chain"; ed.appendChild(chain);
@@ -230,7 +303,11 @@ function renderEditor() {
     m.params.forEach((v, i) => {
       const max = Math.max(100, rg.params[i][1], v);
       const row = document.createElement("div"); row.className = "param";
-      const name = document.createElement("span"); name.textContent = "P" + (i + 1); name.title = `observed range in your presets: ${rg.params[i][0]}–${rg.params[i][1]}`;
+      const pi = (S.params && S.params[key] && S.params[key][i]) || { label: "P" + (i + 1), confidence: "unknown", note: "" };
+      const name = document.createElement("span");
+      name.textContent = pi.label + (pi.confidence === "low" || pi.confidence === "unknown" ? "?" : "");
+      name.title = `${pi.label} (confidence: ${pi.confidence}${pi.note ? "; " + pi.note : ""})\nobserved range in your presets: ${rg.params[i][0]}–${rg.params[i][1]}`;
+      if (pi.confidence === "low" || pi.confidence === "unknown") name.style.fontStyle = "italic";
       const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = max; sl.value = v;
       const nm = document.createElement("input"); nm.type = "number"; nm.min = 0; nm.max = 255; nm.value = v;
       const set = x => { x = Math.max(0, Math.min(255, parseInt(x, 10) || 0)); m.params[i] = x; sl.value = x; nm.value = x; scheduleLive(); };
@@ -244,6 +321,82 @@ function renderEditor() {
   ed.appendChild(n);
   updateDirty();
 }
+// ---- tabs and the NAM lab
+let NAM = null;
+function showTab(which) {
+  const nam = which === "nam";
+  document.querySelector("main:not(#namlab)").hidden = nam;
+  $("#namlab").hidden = !nam;
+  $("#tab-presets").classList.toggle("on", !nam); $("#tab-nam").classList.toggle("on", nam);
+  if (nam) loadNam();
+}
+$("#tab-presets").onclick = () => showTab("presets");
+$("#tab-nam").onclick = () => showTab("nam");
+async function loadNam() {
+  try { NAM = await api("/api/nam"); } catch (e) { toast(e.message, true); return; }
+  const fill = (sel, items, empty) => { const s = $(sel); s.textContent = ""; if (empty !== undefined) s.add(new Option(empty, "")); items.forEach(([v, t]) => s.add(new Option(t, v))); };
+  fill("#nam-model", NAM.models.map(m => [m.id, `${m.name}${m.gear_make ? " (" + m.gear_make + " " + (m.gear_model || "") + ")" : ""}`]));
+  fill("#nam-ir", NAM.irs.map(f => [f, f]), "(no cabinet IR)");
+  fill("#nam-di", NAM.dis.map(f => [f, f]));
+  const f = NAM.folders || {};
+  $("#namstate").textContent = NAM.available
+    ? `${NAM.models.length} capture(s) in ${f.nam || "?"}; ${NAM.irs.length} IR(s) in ${f.ir || "(no folder)"}; ${NAM.dis.length - 1} DI file(s) in ${f.di || "(no folder)"}.`
+    : "NAM lab unavailable: " + NAM.reason;
+  $("#nam-render").disabled = !NAM.available || !NAM.models.length;
+  if (NAM.available && !NAM.models.length) $("#namstate").textContent += " Put .nam files in the capture folder and reopen this tab.";
+  showNamMeta();
+}
+function showNamMeta() {
+  const m = NAM && NAM.models.find(x => x.id === $("#nam-model").value);
+  $("#nam-meta").textContent = m ? [m.architecture + " " + (m.sample_rate / 1000) + " kHz", m.weights ? m.weights + " weights" : "", m.tone_type || "", m.gear_type || "", m.modeled_by ? "by " + m.modeled_by : ""].filter(Boolean).join(" · ") : "";
+}
+$("#nam-model").onchange = showNamMeta;
+$("#nam-render").onclick = async () => {
+  const b = $("#nam-render"); b.disabled = true; $("#nam-info").textContent = "Rendering...";
+  try {
+    const r = await api("/api/nam/render", { model: $("#nam-model").value, ir: $("#nam-ir").value, di: $("#nam-di").value, gain_db: parseFloat($("#nam-gain").value) || 0 });
+    const a = $("#nam-audio"); a.hidden = false; a.src = "/api/nam/audio/" + r.id; a.play().catch(() => {});
+    $("#nam-info").textContent = `${r.stats.seconds} s of audio in ${r.stats.total_s} s (inference ${r.stats.inference_s} s, ${(1 / Math.max(r.stats.realtime_factor, 1e-6)).toFixed(0)}x real time)`;
+  } catch (e) { toast(e.message, true); $("#nam-info").textContent = ""; }
+  finally { b.disabled = false; }
+};
+
+let rigDraft = null;
+const LONG_FIELDS = ["likes", "dislikes", "notes", "pickup_notes", "styles", "body", "listening"];
+function field(obj, key, label) {
+  const l = document.createElement("label"); l.textContent = label;
+  const long = LONG_FIELDS.includes(key);
+  const inp = document.createElement(long ? "textarea" : "input"); if (long) inp.rows = 2;
+  inp.maxLength = 400; inp.value = obj[key] || "";
+  inp.oninput = () => { obj[key] = inp.value; };
+  l.appendChild(inp); return l;
+}
+function buildRigForm() {
+  const box = $("#rigfields"); box.textContent = "";
+  rigDraft.guitars.forEach((g, gi) => {
+    const fs = document.createElement("fieldset"); fs.className = "gcard";
+    const lg = document.createElement("legend"); lg.textContent = `Guitar ${gi + 1}`; fs.appendChild(lg);
+    for (const [k, label] of Object.entries(S.guitar_fields || {})) fs.appendChild(field(g, k, label));
+    const rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove this guitar"; rm.style.marginTop = "8px";
+    rm.onclick = () => { rigDraft.guitars.splice(gi, 1); buildRigForm(); };
+    fs.appendChild(rm); box.appendChild(fs);
+  });
+  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ Add a guitar"; add.style.marginTop = "10px";
+  add.onclick = () => { rigDraft.guitars.push({}); buildRigForm(); };
+  box.appendChild(add);
+  for (const [k, label] of Object.entries(S.rig_fields || {})) box.appendChild(field(rigDraft, k, label));
+}
+$("#rig").onclick = () => {
+  rigDraft = JSON.parse(JSON.stringify(S.rig || {})); rigDraft.guitars = rigDraft.guitars || [];
+  buildRigForm(); $("#rigdlg").showModal();
+};
+$("#rigcancel").onclick = () => $("#rigdlg").close();
+$("#rigsave").onclick = async () => {
+  try {
+    const r = await api("/api/rig", { rig: rigDraft }); S.rig = r.rig; $("#rigdlg").close(); toast("Rig saved");
+    if (cur) renderEditor();
+  } catch (e) { toast(e.message, true); }
+};
 $("#search").oninput = () => S && renderList();
 $("#refresh").onclick = async () => {
   const b = $("#refresh"); b.disabled = true; toast("Reading all presets from the device (about 16 s)...");
