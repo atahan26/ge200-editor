@@ -235,6 +235,14 @@
   .mergeadd select { flex: 1 1 220px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
   .expg.merged select { opacity: .45; }
   .mergechk { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; }
+  .vped { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .vped svg { width: 62px; height: 46px; flex: none; }
+  .vped .mid { flex: 1; min-width: 0; }
+  .vped .mid input[type=range] { width: 100%; accent-color: var(--amber); }
+  .vped .ends { display: flex; justify-content: space-between; font: 700 10px var(--hw); color: var(--mute); }
+  .vped .pct { width: 56px; text-align: right; font: 700 13px var(--hw); }
+  .vped .btn { padding: 3px 8px; font-size: 12px; margin-top: 0; }
+  .vped.idle .pct { color: var(--mute); }
   /* IR page */
   .irgrid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
   @media (max-width: 900px) { .irgrid { grid-template-columns: 1fr; } }
@@ -414,7 +422,7 @@ function scheduleLive() {
   const my = epoch, slot = cur.slot;
   timer = setTimeout(async () => {
     if (my !== epoch) return;
-    try { const r = await api("/api/live", { slot, edit: cur.edit, epoch: my }); if (r.error) toast("Unit: " + r.error, true); }
+    try { const r = await api("/api/live", { slot, edit: liveEdit(), epoch: my }); if (r.error) toast("Unit: " + r.error, true); }
     catch (e) { toast(e.message, true); }
   }, 150);
 }
@@ -482,7 +490,7 @@ function makeKnob(o) {
     inp.onblur = () => done(true);
   };
   paint();
-  return { root, setLabel(text, guess, title, dim, tag) {
+  return { root, setValue(x) { v = Math.max(0, Math.min(255, Math.round(x))); if (v > max) max = v; paint(); }, setLabel(text, guess, title, dim, tag) {
     lab.textContent = text; lab.classList.toggle("guess", !!guess); root.classList.toggle("dim", !!dim); root.title = title || "";
     if (tag) root.dataset.exp = tag; else delete root.dataset.exp;
   } };
@@ -557,6 +565,7 @@ function moduleKnobs(key, m, kind) {
     const k = makeKnob({ max: Math.max(100, rg.params[i][1], v), value: v, rest: stored[i], kind, onChange: x => { m.params[i] = x; scheduleLive(); } });
     const paint = () => { const L = labelFor(key, m, i, rg); k.setLabel(L.text, L.guess, L.title + titleExp(key, L.text, i), L.dim, expTag(key, L.text, i)); };
     paint(); painters.push(paint); nodes.push(k.root);
+    knobReg[key + ":" + i] = x => k.setValue(x);
   });
   return { nodes, repaint: () => painters.forEach(f => f()) };
 }
@@ -582,6 +591,7 @@ function pedalView(key, i) {
       f.type = "range"; f.min = 0; f.max = Math.max(100, rg.params[idx][1], v); f.value = v; f.setAttribute("aria-label", "band " + (idx + 1));
       f.oninput = () => { m.params[idx] = parseInt(f.value, 10); val.textContent = f.value; scheduleLive(); };
       f.ondblclick = () => { f.value = stored[idx]; f.oninput(); };
+      knobReg[key + ":" + idx] = x => { f.max = Math.max(parseInt(f.max, 10), x); f.value = x; val.textContent = x; };
       const paint = () => { const L = labelFor(key, m, idx, rg); lab.textContent = L.text; lab.style.fontStyle = L.guess ? "italic" : "normal"; b.title = L.title + titleExp(key, L.text, idx);
         const tag = expTag(key, L.text, idx); if (tag) b.dataset.exp = tag; else delete b.dataset.exp; };
       paint(); painters.push(paint); b.append(f, val, lab); body2.appendChild(b);
@@ -649,8 +659,66 @@ function cabView(i) {
   kn.repaint();
   return root;
 }
+// ---- virtual expression pedals: the targeted knobs follow the pedal on the board (and, with Live audition on, on the unit)
+let knobReg = {};                  // "module:position" -> function that shows a value on that knob without touching the preset
+const vp = { exp1: null, exp2: null };   // pedal positions 0..100, null = not touched (the knobs show the preset's own values)
+function pedalTargets(id) {
+  const T = S.exp_targets, E = cur.edit.exp, out = [];
+  const posOf = (key, name) => { const m = cur.edit.modules[key], rg = S.ranges[key];
+    for (let i = 0; i < m.params.length; i++) { const L = labelFor(key, m, i, rg); if (!L.dim && normName(L.text) === normName(name)) return i; } return -1; };
+  if (id === "exp1" && cur.edit.merge.on) {
+    for (let sl = 0; sl < 54; sl++) {
+      const h = cur.edit.merge.heel[sl], t = cur.edit.merge.toe[sl]; if (!h && !t) continue;
+      const key = T.modules[Math.floor(sl / 6)], pos = sl % 6;
+      if (pos < cur.edit.modules[key].params.length) out.push({ key, pos, heel: h, toe: t });
+    }
+  } else {
+    const key = T.modules[E[id + "_module"]], name = T.targets[key][E[id + "_target"]], pos = posOf(key, name);
+    if (pos >= 0) out.push({ key, pos, heel: 0, toe: Math.max(100, S.ranges[key].params[pos][1]) });
+  }
+  return out;
+}
+function sweptValue(key, pos) {
+  let val = null;
+  for (const id of ["exp1", "exp2"]) {
+    if (vp[id] === null) continue;
+    for (const t of pedalTargets(id)) if (t.key === key && t.pos === pos) val = Math.round(t.heel + (t.toe - t.heel) * vp[id] / 100);
+  }
+  return val;
+}
+function applyPedalView() {
+  for (const key of S.exp_targets.modules) cur.edit.modules[key].params.forEach((base, pos) => {
+    const f = knobReg[key + ":" + pos]; if (!f) return;
+    const v = sweptValue(key, pos); f(v === null ? base : v);
+  });
+}
+// what is sent to the unit while a virtual pedal is engaged: the edit with the swept values (the stored edit stays as it is)
+function liveEdit() {
+  const e = JSON.parse(JSON.stringify(cur.edit));
+  for (const key of S.exp_targets.modules) e.modules[key].params.forEach((_, pos) => { const v = sweptValue(key, pos); if (v !== null) e.modules[key].params[pos] = v; });
+  return e;
+}
+function virtualPedal(id) {
+  const w = el("div", "vped idle"), svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 62 46"); svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = '<rect x="3" y="36" width="56" height="8" rx="2" fill="#23282d"/><g class="tread"><path d="M6 34 L56 34 L50 20 L12 20 Z" fill="#9aa1a7" stroke="#4b535a" stroke-width="1.5"/><g stroke="#4b535a" stroke-width="1.5"><line x1="15" y1="24" x2="47" y2="24"/><line x1="12" y1="28" x2="50" y2="28"/></g></g>';
+  const mid = el("div", "mid"), slider = el("input"), ends = el("div", "ends"), pct = el("span", "pct", "off"), rel = el("button", "btn", "Release");
+  slider.type = "range"; slider.min = 0; slider.max = 100; slider.value = vp[id] === null ? 0 : vp[id]; slider.setAttribute("aria-label", "Try this pedal: heel to toe");
+  ends.append(el("span", "", "Heel"), el("span", "", "Toe")); mid.append(slider, ends); rel.type = "button"; rel.title = "Let go of the pedal: the knobs show the preset's own values again";
+  w.append(svg, mid, pct, rel);
+  const show = () => {
+    const p = vp[id], tread = svg.querySelector(".tread");
+    w.classList.toggle("idle", p === null); pct.textContent = p === null ? "off" : p + "%";
+    tread.setAttribute("transform", "rotate(" + (((p === null ? 0 : p) / 100 - 0.5) * 24).toFixed(1) + " 31 34)");
+  };
+  slider.oninput = () => { vp[id] = parseInt(slider.value, 10); show(); applyPedalView(); scheduleLive(); };
+  rel.onclick = () => { vp[id] = null; slider.value = 0; show(); applyPedalView(); scheduleLive(); };
+  show();
+  return w;
+}
 function drawBoard() {
   const board = $("#board"); if (!board) return;
+  knobReg = {};
   board.textContent = "";
   const term = t => { const s = el("div", "slot term"); s.append(el("span", "plug"), el("span", "", t)); return s; };
   board.appendChild(term("In"));
@@ -662,6 +730,7 @@ function drawBoard() {
   });
   board.appendChild(term("Out"));
   layoutCables();
+  applyPedalView();
 }
 // a patch cable runs to the next module only when that module sits on the same row
 function layoutCables() {
@@ -672,6 +741,7 @@ window.addEventListener("resize", () => layoutCables());
 
 // ---------------------------------------------------------------- editor
 function renderEditor() {
+  vp.exp1 = vp.exp2 = null;
   const ed = $("#editor"); ed.textContent = "";
   const e = cur.edit;
   const bar = el("div", "bar");
@@ -750,7 +820,7 @@ function expGroup(id, title) {
   mod.value = E[id + "_module"]; fillTargets(); status();
   mod.onchange = () => { E[id + "_module"] = parseInt(mod.value, 10); E[id + "_target"] = 0; fillTargets(); status(); drawBoard(); scheduleLive(); };
   tgt.onchange = () => { E[id + "_target"] = parseInt(tgt.value, 10); status(); drawBoard(); scheduleLive(); };
-  pair.append(mod, tgt); g.append(pair, info);
+  pair.append(mod, tgt); g.append(pair, info, virtualPedal(id));
   g._refresh = () => { mod.value = E[id + "_module"]; fillTargets(); status(); };
   return g;
 }
@@ -813,7 +883,7 @@ function expView() {
   refresh();
   const reset = el("button", "btn", "Back to the default assignment (volume)");
   reset.onclick = () => { Object.assign(cur.edit.exp, { exp1_module: 1, exp1_target: 0, exp2_module: 2, exp2_target: 5 }); g1._refresh(); g2._refresh(); drawBoard(); scheduleLive(); };
-  box.append(reset, el("div", "note", "Each pedal sweeps one knob of one module (the knob gets an EXP tag on the board); with MERGE the built-in pedal sweeps several knobs, each from its heel to its toe value. Not editable here: MERGE on the external pedal (how it is stored is not known) and the pedal calibration."));
+  box.append(reset, el("div", "note", "Move a pedal's slider to try it: the knobs it controls follow on the board and, with Live audition on, on the unit (Save still stores the knob values as you edited them, not the pedal's position; the unit's own real pedal is not mirrored here because the unit does not report it). Each pedal sweeps one knob of one module (the knob gets an EXP tag on the board); with MERGE the built-in pedal sweeps several knobs, each from its heel to its toe value. Not editable here: MERGE on the external pedal (how it is stored is not known) and the pedal calibration."));
   return box;
 }
 

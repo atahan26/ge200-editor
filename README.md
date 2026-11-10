@@ -83,7 +83,9 @@ Each preset assigns the built-in pedal (EXP) and the external one (EXP2) to one 
 pedal **MERGE**: move several knobs at once, each between its own heel and toe value. The editor shows both in the
 **Expression pedals** panel (module and knob menus with a note when the module is off or the current model has no such
 knob; for MERGE a list of knobs with heel and toe values and an "add this knob" menu) and tags the affected knobs on the
-board. How it is stored was worked out by comparing the unit's state frames with stored presets, reading the firmware's
+board. A **virtual pedal** slider in each group moves the knobs it controls on the board (single target: over its whole
+range; MERGE: from each knob's heel value to its toe value) and, with Live audition on, on the unit; Save still stores the
+knob values as edited. The unit's own real pedal is not mirrored: the unit does not report it. How it is stored was worked out by comparing the unit's state frames with stored presets, reading the firmware's
 MERGE code and checking everything on 200 real presets (PROTOCOL.md). Not editable yet: MERGE on the external pedal (where
 it is stored is unknown) and the pedal calibration.
 
