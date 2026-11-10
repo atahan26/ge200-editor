@@ -4,22 +4,25 @@ The model never talks to the device. It proposes an *edit* (name, chain order, p
 params) that is validated and clamped to the ranges seen in your own presets; the web editor then loads it into
 the editor where you audition it and decide whether to save.
 
+Any LLM back end works (Claude, OpenAI, Gemini, OpenRouter, or a local OpenAI-compatible server): see
+``ge200.llm`` for the providers and the environment variables.
+
 Privacy: the prompt contains the description you type, the base preset and a sample of your own presets
-(names and settings), plus the model-name tables if you passed a local ``--names`` file. All of it is sent to
-the Anthropic API. Needs ``pip install anthropic`` and credentials (``ANTHROPIC_API_KEY`` or an ``ant auth login``
-profile).
+(names and settings), plus the model-name tables if you passed a local ``--names`` file and your rig text. All of
+it is sent to the provider you choose; pick ``local`` to keep it on your machine.
 """
 from __future__ import annotations
 
 import json
-import os
 from typing import Dict, List, Optional
 
+from . import llm
 from . import params as param_info
 from . import rig as rig_mod
-from .preset import MODULE_LAYOUT, EditError, Preset, apply_edit, param_ranges
+from .preset import (MODULE_LAYOUT, WIDE_FIELDS, WIDE_LIMITS, WIDE_MIN_SENSIBLE, EditError, Preset, apply_edit,
+                     param_ranges)
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = llm.ANTHROPIC_DEFAULT_MODEL
 MODULE_LABELS = {
     "fx": "FX (wah / compressor family)", "ds": "drive / overdrive / distortion", "amp": "amp model",
     "cab": "cabinet / IR", "ns": "noise suppressor", "eq": "equalizer", "mod": "modulation",
@@ -44,6 +47,8 @@ def _schema() -> dict:
         "required": ["type", "enabled", "params"],
         "additionalProperties": False,
     }
+    wide = {"type": "object", "properties": {k: {"type": "integer"} for k in WIDE_FIELDS},
+            "required": list(WIDE_FIELDS), "additionalProperties": False}
     return {
         "type": "object",
         "properties": {
@@ -52,8 +57,9 @@ def _schema() -> dict:
             "chain_order": {"type": "array", "items": {"type": "integer"}},
             "modules": {"type": "object", "properties": {k: module for k in MODULE_KEYS},
                         "required": MODULE_KEYS, "additionalProperties": False},
+            "wide": wide,
         },
-        "required": ["name", "notes", "chain_order", "modules"],
+        "required": ["name", "notes", "chain_order", "modules", "wide"],
         "additionalProperties": False,
     }
 
@@ -62,21 +68,14 @@ SCHEMA = _schema()
 
 
 def available() -> dict:
-    """Is the optional SDK installed, and does an API key look configured?"""
-    from .env import load_env
-    load_env()
-    try:
-        import anthropic  # noqa: F401
-    except ImportError:
-        return {"available": False, "reason": "the 'anthropic' package is not installed (pip install anthropic)"}
-    has_key = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
-    return {"available": True, "reason": "" if has_key else
-            "no ANTHROPIC_API_KEY in the environment (an 'ant auth login' profile also works)"}
+    """Which providers are configured (see ``llm.overview``)."""
+    return llm.overview()
 
 
 def _compact(p: Preset) -> dict:
     return {"name": p.name, "chain_order": p.chain_order,
-            "modules": {k: {"type": m.type, "enabled": m.enabled, "params": m.params} for k, m in p.modules.items()}}
+            "modules": {k: {"type": m.type, "enabled": m.enabled, "params": m.params} for k, m in p.modules.items()},
+            "wide": p.wide}
 
 
 def pick_examples(presets: Dict[int, Preset], count: int = 14) -> List[Preset]:
@@ -96,11 +95,11 @@ def build_system_prompt(presets: Dict[int, Preset], names: Optional[Dict[str, Li
         "",
         "A preset has nine modules in this fixed order: " + ", ".join(f"{k} ({MODULE_LABELS[k]})" for k in MODULE_KEYS) + ".",
         "Every module has: `type` (1-based model number), `enabled` (true/false) and `params` (a list of integers, "
-        "usually 0-100). What each param does, with how sure we are (confidence: high = confirmed, medium = consistent "
-        "with the data, low = only a guess from the editor's label order, no tag = unknown):",
-        param_info.describe_for_prompt(),
-        "For params with low or unknown confidence, infer from the example presets below and keep them close to the "
-        "base preset's values rather than guessing wildly. Never go outside the observed ranges listed below.",
+        "usually 0-100). What each param does comes from the device's own knob labels, per model (the k-th label is "
+        "params[k]):",
+        param_info.describe_for_prompt(names),
+        "Where a param is not mapped (delay, two cabinet knobs) keep it close to the base preset's value. "
+        "Never go outside the observed ranges listed below.",
         "`chain_order` is a permutation of 1..9 giving the signal order; module ids are assumed to follow the order "
         "above (1=fx, 2=ds, 3=amp, 4=cab, 5=ns, 6=eq, 7=mod, 8=delay, 9=reverb). Change it only when it helps the sound.",
         "`name` is at most 16 printable ASCII characters (upper case is the convention).",
@@ -173,6 +172,13 @@ def sanitize_edit(edit: dict, base: Preset, presets: Dict[int, Preset],
             "enabled": bool(m.get("enabled", b.enabled)),
             "params": fixed,
         }
+    wide_in = edit.get("wide") if isinstance(edit.get("wide"), dict) else {}
+    out["wide"] = {}
+    for k in WIDE_FIELDS:
+        lo, hi = max(WIDE_LIMITS[k][0], WIDE_MIN_SENSIBLE), WIDE_LIMITS[k][1]
+        v = wide_in.get(k)
+        v = v if isinstance(v, int) and not isinstance(v, bool) else base.wide[k]
+        out["wide"][k] = v if v == base.wide[k] else max(lo, min(hi, v))     # untouched values stay exactly as they were
     apply_edit(base.raw, out)           # raises EditError if something is still wrong
     return out
 
@@ -187,78 +193,51 @@ def _parse_json(text: str) -> dict:
     return data
 
 
-def call_model(client, system: str, user: str, model: str = DEFAULT_MODEL, effort: str = "high",
-               fallbacks: bool = True) -> dict:
-    """One Claude request with a JSON-schema constrained answer."""
-    kwargs = dict(
-        model=model,
-        max_tokens=16000,
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user}],
-        output_config={"effort": effort, "format": {"type": "json_schema", "schema": SCHEMA}},
-    )
-    if fallbacks:    # server-side fallback if a safety classifier declines (very unlikely for this task)
-        response = client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **kwargs)
-    else:
-        response = client.messages.create(**kwargs)
-    if response.stop_reason == "refusal":
-        raise ToneError("the model declined this request")
-    if response.stop_reason == "max_tokens":
-        raise ToneError("the answer was cut off (max_tokens); try a shorter description")
-    text = next((b.text for b in response.content if b.type == "text"), None)
-    if text is None:
-        raise ToneError("the model returned no text")
-    return _parse_json(text)
-
-
-def default_client():
-    from .env import load_env
-    load_env()                                     # picks up ANTHROPIC_API_KEY from a git-ignored .env
+def resolve_provider(provider=None, client=None, fallbacks: bool = True) -> "llm.Provider":
+    if provider is not None and not isinstance(provider, str):
+        return provider
+    if client is not None:                      # an Anthropic-style client (tests inject a fake one)
+        return llm.AnthropicProvider(client=client, fallbacks=fallbacks)
     try:
-        import anthropic
-    except ImportError as e:
-        raise ToneError("the 'anthropic' package is not installed (pip install anthropic)") from e
-    return anthropic.Anthropic()
+        return llm.get_provider(provider)
+    except llm.LlmError as e:
+        raise ToneError(str(e)) from e
 
 
 def generate(description: str, base: Preset, presets: Dict[int, Preset], names=None, client=None,
-             model: str = DEFAULT_MODEL, effort: str = "high", fallbacks: bool = True,
-             rig: Optional[dict] = None, guitar: Optional[str] = None) -> dict:
-    """Return ``{"edit": {...}, "notes": str}``; ``edit`` is valid input for ``apply_edit`` / the web editor."""
+             model: Optional[str] = None, effort: str = "high", fallbacks: bool = True,
+             rig: Optional[dict] = None, guitar: Optional[str] = None, provider=None) -> dict:
+    """Return ``{"edit": {...}, "notes": str}``; ``edit`` is valid input for ``apply_edit`` / the web editor.
+
+    ``provider`` is a provider id ("anthropic", "openai", "gemini", "openrouter", "local"), a ``llm.Provider``
+    object, or None for the configured default. ``client`` (an Anthropic SDK client) is kept for tests/back-compat.
+    """
     description = (description or "").strip()
     if not description:
         raise ToneError("describe the tone you want")
     if len(description) > 1000:
         raise ToneError("the description is too long (1000 characters at most)")
-    client = client or default_client()
+    prov = resolve_provider(provider, client, fallbacks)
+    model = (model or prov.default_model() or "").strip()
+    if not model:
+        raise ToneError(f"name a model for the {prov.label} provider (or set GE200_LLM_MODEL)")
     system = build_system_prompt(presets, names, rig=rig)
     user = build_user_prompt(description, base, guitar)
     last_error: Optional[Exception] = None
     for _ in range(2):          # one retry if the answer is unusable
         try:
-            data = call_model(client, system, user, model, effort, fallbacks)
+            done = prov.complete(system, user, SCHEMA, model, effort)
+            if done.refused:
+                raise ToneError("the model declined this request")
+            if done.truncated:
+                raise ToneError("the answer was cut off (max tokens); try a shorter description or a larger limit")
+            if not done.text:
+                raise ToneError("the model returned no text")
+            data = _parse_json(done.text)
             edit = sanitize_edit(data, base, presets, names)
-            return {"edit": edit, "notes": str(data.get("notes", "")).strip()[:400]}
+            return {"edit": edit, "notes": str(data.get("notes", "")).strip()[:900]}
         except (ToneError, EditError) as e:
             last_error = e
-        except Exception as e:      # SDK / network errors: translate, never leak keys
-            raise ToneError(_explain_api_error(e)) from e
+        except llm.LlmError as e:
+            raise ToneError(str(e)) from e
     raise ToneError(f"no usable answer from the model: {last_error}")
-
-
-def _explain_api_error(e: Exception) -> str:
-    try:
-        import anthropic
-    except ImportError:
-        return f"{type(e).__name__}"
-    if isinstance(e, anthropic.AuthenticationError):
-        return "authentication failed: set ANTHROPIC_API_KEY (or run 'ant auth login')"
-    if isinstance(e, anthropic.PermissionDeniedError):
-        return "the API key is not allowed to use this model"
-    if isinstance(e, anthropic.RateLimitError):
-        return "rate limited by the API, try again in a minute"
-    if isinstance(e, anthropic.APIConnectionError):
-        return "could not reach the Anthropic API (network problem)"
-    if isinstance(e, anthropic.APIStatusError):
-        return f"API error {e.status_code}: {getattr(e, 'message', type(e).__name__)}"
-    return f"{type(e).__name__}: {e}"

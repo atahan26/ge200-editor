@@ -23,11 +23,67 @@ class ParamsTests(unittest.TestCase):
                 self.assertIn(item["confidence"], (params.HIGH, params.MEDIUM, params.LOW, params.UNKNOWN))
                 self.assertEqual(params.label(key, i), item["label"])
 
-    def test_prompt_text_states_confidence(self):
-        text = params.describe_for_prompt()
-        self.assertIn("ds: p0=LEVEL [high]", text)
-        self.assertIn("p2=GAIN [high]", text)
-        self.assertIn("fx: p0=P1, p1=P2", text)                  # unknown params carry no confidence tag
+    def test_model_tables_cover_every_model_with_the_right_knob_count(self):
+        counts = {"fx": (8, 4), "ds": (20, 3), "amp": (65, 6), "ns": (3, 3), "eq": (3, 6), "mod": (20, 4), "reverb": (7, 4)}
+        for key, (models, knobs) in counts.items():
+            table = params.MODEL_LABELS[key]
+            self.assertEqual(sorted(table), list(range(1, models + 1)), key)
+            self.assertTrue(all(len(v) == knobs for v in table.values()), key)
+
+    def test_wide_values_roundtrip_through_the_preset_image(self):
+        from ge200.preset import WIDE_FIELDS, Preset, apply_edit, EditError
+        raw = bytes(512)
+        out = apply_edit(raw, {"wide": {"delay_time": 470, "eq_freq_2": 600}})
+        pr = Preset.from_bytes(0, out)
+        self.assertEqual((pr.wide["delay_time"], pr.wide["eq_freq_2"], pr.wide["delay_time_b"]), (470, 600, 0))
+        self.assertEqual(out[350:352], (470).to_bytes(2, "little"))
+        self.assertEqual(sum(1 for a, b in zip(raw, out) if a != b), 4)           # 470=0x01D6 and 600=0x0258: 4 bytes
+        self.assertIn("delay_time", pr.to_dict()["wide"])
+        for bad in ({"wide": {"nope": 1}}, {"wide": {"delay_time": -5}}, {"wide": {"delay_time": 99999}},
+                    {"wide": {"delay_time": "x"}}):
+            with self.assertRaises(EditError, msg=str(bad)):
+                apply_edit(raw, bad)
+
+    def test_noop_edit_keeps_every_byte_even_stale_name_bytes(self):
+        from ge200.preset import Preset, apply_edit
+        raw = bytearray(512)
+        stale = b"FROGGING\x00RY\x00\x00\x00"                # stale bytes after the NUL, as seen in real presets
+        raw[12:12 + len(stale)] = stale
+        raw[0:9] = bytes(range(1, 10))
+        pr = Preset.from_bytes(0, bytes(raw))
+        d = pr.to_dict()
+        edit = {"name": d["name"], "chain_order": d["chain_order"], "wide": d["wide"],
+                "modules": {k: {"type": m["type"], "enabled": m["enabled"], "params": m["params"]}
+                            for k, m in d["modules"].items()}}
+        self.assertEqual(apply_edit(bytes(raw), edit), bytes(raw))
+        edit["name"] = "NEW"
+        self.assertEqual(Preset.from_bytes(0, apply_edit(bytes(raw), edit)).name, "NEW")
+
+    def test_labels_come_from_the_device_tables(self):
+        self.assertEqual(params.label("mod", 2, model=15), "Q")              # Q-filter: RATE, MIX, Q
+        self.assertEqual(params.label("mod", 3, model=15), "(unused)")
+        self.assertEqual(params.label("ns", 0, model=3), "ATTACK")           # noise gate: ATTACK, RELEASE, THRES
+        self.assertEqual(params.label("ns", 2, model=3), "THRES")
+        self.assertEqual(params.label("ns", 0, model=1), "THRES")            # noise killer
+        self.assertEqual(params.label("eq", 5, model=3), "3.2KHZ")
+        self.assertEqual(params.label("reverb", 0), "PRE DELAY")
+        self.assertEqual(params.label("delay", 3, model=1), "SUB-D")
+        self.assertEqual(params.label("delay", 4, model=8), "THRES")         # DYNAMIC delay
+        self.assertEqual(params.label("delay", 4, model=1), "(unused)")
+        self.assertEqual((params.label("delay", 2, model=9), params.label("delay", 5, model=9)), ("TIME A", "SUB B"))
+        self.assertEqual(params.label("cab", 1, model=7), "CENTER")
+        self.assertEqual(params.confidence("mod", 0, model=5), "high")
+        self.assertEqual(params.confidence("delay", 3), "high")              # note division, confirmed by the data
+
+    def test_prompt_text_lists_models_and_unused_knobs(self):
+        names = {"mod": [f"M{i}" for i in range(1, 21)]}
+        text = params.describe_for_prompt(names)
+        self.assertIn("- ds: all models: p0=VOLUME, p1=TONE, p2=GAIN", text)
+        self.assertIn("models 15=M15: p0=RATE, p1=MIX, p2=Q, p3=-", text)
+        self.assertIn("models 1=M1, 2=M2, 3=M3: p0=RATE, p1=LEVEL, p2=DEPTH", text)
+        self.assertIn("models 9: p0=LEVEL, p1=F.BACK, p2=TIME A, p3=SUB A, p4=-, p5=SUB B", text)
+        self.assertIn("the delay time is `wide.delay_time` in ms", text)
+        self.assertIn("1/16D", text)
 
 
 class RigTests(unittest.TestCase):
@@ -77,7 +133,7 @@ class RigTests(unittest.TestCase):
         self.assertNotIn("will play this preset with", tone.build_user_prompt("x", base))
         self.assertEqual(a, tone.build_system_prompt(presets, None, rig=r))
         self.assertNotIn("guitarist's own rig", tone.build_system_prompt(presets, None))     # no rig -> no block
-        self.assertIn("p2=GAIN [high]", a)
+        self.assertIn("p2=GAIN", a)
         self.assertIn("You cannot hear audio", a)
 
 
@@ -120,6 +176,7 @@ class RigWebTests(unittest.TestCase):
         self.assertIn("likes", st["rig_fields"])
         self.assertIn("scale", st["guitar_fields"])
         self.assertIn("ds", st["params"])
+        self.assertEqual(st["model_labels"]["mod"]["15"], ["RATE", "MIX", "Q", None])
         code, _ = self.post("/api/tone", {"slot": 2, "description": "clean", "edit": {}, "guitar": 1})
         self.assertEqual(code, 200)
         kw = self.app.llm_client.calls[0][1]

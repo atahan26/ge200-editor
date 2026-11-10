@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Dict, List, Optional
 
@@ -46,7 +47,7 @@ def _fmt_module(key: str, m, names) -> str:
 
 
 def cmd_devices(args) -> int:
-    from .hid_win import find_device_paths
+    from .hid import find_device_paths
     paths = find_device_paths()
     for p in paths:
         print(p)
@@ -147,6 +148,42 @@ def cmd_write_slot(args) -> int:
     return 0 if ok and others else 1
 
 
+def cmd_ir_preview(args) -> int:
+    """Offline: show how IR files survive the conversion to the device's 512-sample 44.1 kHz format."""
+    import numpy as np
+    import soundfile as sf
+    from . import ir
+    os.makedirs(args.out_dir, exist_ok=True) if args.out_dir else None
+    for path in args.files:
+        x, rate = ir.load_audio(path)
+        y = ir.prepare(x, rate)
+        print(f"{os.path.basename(path)}: {len(x)} samples @ {rate} Hz ({1000 * len(x) / rate:.0f} ms) -> 512 samples @ 44100 Hz; "
+              f"peak {float(np.max(np.abs(y))):.3f}")
+        if args.out_dir:
+            out = os.path.join(args.out_dir, os.path.splitext(os.path.basename(path))[0] + " [GE200].wav")
+            sf.write(out, y, 44100, subtype="PCM_24")
+            print("   wrote", out)
+    return 0
+
+
+def cmd_ir_upload(args) -> int:
+    """Upload an IR into one of the unit's 10 user IR slots (overwrites it). Shows which name table changed."""
+    _require_write_flag(args)
+    from . import ir
+    x, rate = ir.load_audio(args.file)
+    samples = ir.prepare(x, rate)
+    name = args.name or args.file
+    with Ge200(allow_write=True) as dev:
+        before = dev.read_state().name_tables()
+        dev.write_ir(args.slot, samples, name)
+        after = dev.read_state().name_tables()
+    for cmd, names in after.items():
+        old = before.get(cmd, [])
+        changed = [i for i, n in enumerate(names) if i >= len(old) or old[i] != n]
+        print(f"table {cmd:#04x}: changed entries {changed}" + (f" -> {[names[i] for i in changed]}" if changed else ""))
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="ge200", description="Read-only access to a Mooer GE200 (unofficial).")
     # common options are accepted both before and after the sub-command
@@ -173,6 +210,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     ws.add_argument("source", help="512-byte .bin or a JSON from `dump`")
     ws.add_argument("--source-index", type=int, default=None, help="preset index inside the JSON")
     ws.set_defaults(fn=cmd_write_slot)
+    ip = sub.add_parser("ir-preview", help="offline: convert IR files to the device format and report")
+    ip.add_argument("files", nargs="+")
+    ip.add_argument("--out-dir", help="also write the converted 512-sample WAVs here")
+    ip.set_defaults(fn=cmd_ir_preview)
+    iu = sub.add_parser("ir-upload", parents=[common, w], help="upload an IR file to a user IR slot 0..9 (UNVERIFIED on a device)")
+    iu.add_argument("slot", type=int)
+    iu.add_argument("file")
+    iu.add_argument("--name", help="name shown on the unit (15 characters)")
+    iu.set_defaults(fn=cmd_ir_upload)
     d = sub.add_parser("dump", parents=[common])
     d.add_argument("output")
     d.add_argument("--raw", metavar="FILE", help="also save the raw HID reports")

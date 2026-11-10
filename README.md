@@ -1,4 +1,4 @@
-# ge200 (unofficial, read-only)
+# ge200 (unofficial)
 
 Small Python library and CLI that reads the state of a **Mooer GE200** over USB (Windows, stdlib only).
 It is an independent project, not affiliated with or endorsed by Mooer.
@@ -35,22 +35,40 @@ Reading the whole device takes about 16 s (the device streams 12 presets per sec
 verify). While a read is running, writes wait for it to finish: writing during the stream can wedge the device's
 input parser (see PROTOCOL.md).
 The server only listens on 127.0.0.1, checks the Host header and requires a per-run token for every change.
-Parameter meanings are not decoded yet, so sliders are labelled P1..Pn (raw bytes in order).
+Sliders carry the device's own knob names for the selected model (taken from the unit's firmware); an italic name
+ending in `?` is a guess (hover for the confidence). Delay time and the custom EQ frequencies are editable too.
 
-## Tone generator (optional, uses the Claude API)
+## Tone generator (optional, any LLM provider)
 In the web editor, type a description ("dreamy clean with a long shimmery reverb") and press **Generate**.
-Claude (`claude-opus-5-5`, with the server-side refusal fallback enabled) gets your description, the current
-preset and a stable sample of your own presets, and answers with a preset edit as JSON. The edit is
-validated and **clamped to the ranges your own presets use**, loaded into the editor, and *not* sent to the
-device until you press **Audition now** (turn your volume down first: levels are unverified) or move a control;
-nothing is stored until you press Save.
-```
-pip install anthropic          # or: pip install .[llm]
-set ANTHROPIC_API_KEY=...      # or run `ant auth login`
-```
-Privacy: the description, the base preset, about a dozen of your presets (names and settings) and, if you
-pass `--names`, the model-name tables are sent to the Anthropic API. Each request costs a few cents; the stable
-part of the prompt (~3k tokens) is marked for prompt caching.
+The model gets your description, the current preset, the device's own knob labels and a stable sample of your own
+presets, and answers with a preset edit as JSON. The edit is validated and **clamped to the ranges your own
+presets use**, loaded into the editor, and *not* sent to the device until you press **Audition now** (turn your
+volume down first: levels are unverified) or move a control; nothing is stored until you press Save.
+
+Pick the provider and model next to the Generate button. Providers (`ge200/llm.py`), configured in `.env`
+(see `.env.example`) or the environment:
+
+| id | service | credentials |
+|---|---|---|
+| `anthropic` | Claude (`pip install anthropic`) | `ANTHROPIC_API_KEY` |
+| `openai` | OpenAI Chat Completions | `OPENAI_API_KEY` |
+| `gemini` | Google Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| `openrouter` | OpenRouter (many vendors) | `OPENROUTER_API_KEY` |
+| `local` | any OpenAI-compatible server you run (Ollama, LM Studio, vLLM, llama.cpp) | `GE200_LLM_BASE_URL` |
+
+`GE200_LLM_PROVIDER` / `GE200_LLM_MODEL` set the defaults. Model names are not guessed for the non-Claude providers:
+name one in the environment or in the editor (it remembers it). The OpenAI-style and Gemini providers need no extra
+packages. Adding another back end is one small class in `ge200/llm.py`.
+
+Safety: keys and base URLs are read from the environment only. The web page can choose a provider *id* and a model
+*name*, never a URL or a key.
+**Verified vs not:** only the Claude provider has been run against the real service. The others are tested against a
+local fake HTTP server and follow the vendors' documented request shapes; a real service may reject something small.
+Please report what it says.
+
+Privacy: the description, the base preset, about a dozen of your presets (names and settings), your rig text and, if
+you pass `--names`, the model-name tables are sent to the provider you choose. Use `local` to keep it on your machine.
+Each hosted request costs a few cents; the Claude provider marks the stable part of the prompt (~3k tokens) for caching.
 
 ### My rig
 **My rig** (header) stores your guitar, pickups, listening setup and taste in `%APPDATA%\ge200\rig.json` (outside the
@@ -71,6 +89,12 @@ A standard-size WaveNet renders about 10x faster than real time on a laptop CPU.
 **not** practical yet (block processing took 9-13 ms per 2.7 ms block); use a native NAM host for that, with the GE200
 as the USB audio interface. `ge200.ir` already converts IR wav files into the device's IR-slot format (512 samples,
 24 bit); uploading them to the unit is implemented as frames only and has **not** been tried on a device yet.
+
+## Without the PC (idea, partly implemented)
+The unit has no WiFi or Bluetooth, but anything that can act as a USB host can sit next to it and serve the web
+editor over its own WiFi. `ge200/hid_linux.py` is a hidraw transport (Raspberry Pi etc.): it is written and tested with
+fake I/O only and has **not** been tried on a real Linux machine yet. NAM captures cannot run on the GE200 itself (its
+amp slots take Mooer's own `.amp/.GNR` format); a small computer could run NAM next to it.
 
 ## Model names
 Model names (amp/cab/effect names) are vendor data and are not shipped. If you own the official editor you

@@ -25,7 +25,7 @@ from typing import List, Optional
 from .. import params as param_info
 from .. import protocol as p
 from .. import rig as rig_mod
-from .. import tone
+from .. import llm, tone
 from ..client import Ge200, Snapshot, load_raw
 from ..preset import EditError, Preset, apply_edit, param_ranges
 
@@ -242,8 +242,8 @@ class App:
         self.pending = None                      # (epoch, slot, raw) newest live update not yet sent
         self.last_error: Optional[str] = None
         self.verify: Optional[dict] = None       # read-back check of the last save
-        self.llm_client = None                   # injected in tests; None = create the Anthropic client on demand
-        self.llm_model = tone.DEFAULT_MODEL
+        self.llm_client = None                   # injected in tests (an Anthropic-style client)
+        self.llm_provider = None                 # injected in tests (an llm.Provider)
         self.log = collections.deque(maxlen=300)
         self.refresh()
         self._stop = False
@@ -275,11 +275,15 @@ class App:
             "ranges": param_ranges(list(s.presets.values())),
             "backup_dir": self.backup_dir,
             "backed_up": self.backed_up,
-            "tone": ({"available": True, "reason": ""} if self.llm_client is not None else tone.available()),
+            "tone": ({"available": True, "reason": "", "default": "anthropic", "providers": []}
+                     if (self.llm_client is not None or self.llm_provider is not None) else tone.available()),
             "rig": self.rig,
             "rig_fields": rig_mod.GENERAL_FIELDS,
             "guitar_fields": rig_mod.GUITAR_FIELDS,
             "params": param_info.PARAMS,
+            "model_labels": {k: {str(t): labs for t, labs in v.items()} for k, v in param_info.MODEL_LABELS.items()},
+            "wide_info": param_info.WIDE_INFO,
+            "note_divisions": param_info.NOTE_DIVISIONS,
         }
 
     def stored(self, slot: int) -> Preset:
@@ -296,7 +300,8 @@ class App:
         return self.rig
 
     def tone(self, slot: int, description: str, base_edit: Optional[dict] = None,
-             guitar_index: Optional[int] = None) -> dict:
+             guitar_index: Optional[int] = None, provider: Optional[str] = None,
+             model: Optional[str] = None) -> dict:
         """Ask the LLM for a preset edit. Never touches the device; takes no device lock (the call can take a minute)."""
         base = self.stored(slot)
         if base_edit:                                   # start from what is currently in the editor
@@ -307,9 +312,15 @@ class App:
             if not isinstance(guitar_index, int) or not 0 <= guitar_index < len(names):
                 raise EditError("unknown guitar")
             guitar = f"Guitar {guitar_index + 1}, {names[guitar_index]}"
-        self._log(f"tone request for slot {slot} ({len(description)} chars, guitar={guitar})")
-        res = tone.generate(description, base, dict(self.snap.presets), self.names,
-                            client=self.llm_client, model=self.llm_model, rig=self.rig, guitar=guitar)
+        if provider is not None and not (isinstance(provider, str) and provider.isalnum()):
+            raise EditError("invalid provider")
+        if model is not None and (not isinstance(model, str) or (model and not llm.MODEL_RE.match(model))):
+            raise EditError("invalid model name")
+        self._log(f"tone request for slot {slot} ({len(description)} chars, guitar={guitar}, "
+                  f"provider={provider or 'default'})")
+        res = tone.generate(description, base, dict(self.snap.presets), self.names, client=self.llm_client,
+                            provider=self.llm_provider or provider or None, model=model or None,
+                            rig=self.rig, guitar=guitar)
         self._log("tone: ok")
         return res
 
@@ -537,9 +548,10 @@ class Handler(BaseHTTPRequestHandler):
                 desc = body.get("description")
                 if not isinstance(desc, str):
                     raise EditError("description must be a string")
-                return self._json(200, self.app.tone(slot, desc, edit or None, body.get("guitar")))
+                return self._json(200, self.app.tone(slot, desc, edit or None, body.get("guitar"),
+                                                         body.get("provider") or None, body.get("model") or None))
             self._json(404, {"error": "not found"})
-        except (EditError, ValueError, KeyError, json.JSONDecodeError, tone.ToneError, rig_mod.RigError) as e:
+        except (EditError, ValueError, KeyError, json.JSONDecodeError, tone.ToneError, llm.LlmError, rig_mod.RigError) as e:
             self._json(400, {"error": str(e)})
         except Exception as e:
             self._json(500, {"error": f"{type(e).__name__}: {e}"})

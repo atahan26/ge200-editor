@@ -135,6 +135,38 @@ number of entries in the editor's model-name tables:
   editor); bytes 128..136 hold a few more small values. Not decoded.
 - Preset volume ("PRESET VOL" in the editor) is most likely the 0x64 at offset 10; unconfirmed.
 
+## Parameter meanings per model [firmware-derived, cross-checked with real presets]
+The device firmware (plain Thumb-2 code; readable, never modified or flashed) fills, for every effect model, four label
+fields of its UI structure from small `case` blocks selected by the model number (`tbb` jump tables). The k-th label is
+the k-th parameter byte of the module block (verified for the modulation module: the firmware copies the four bytes after
+the type/enable pair into the four label fields in order). Results (`ge200/params.py` holds the tables):
+
+| Module | Labels in byte order |
+|---|---|
+| DS | VOLUME, TONE, GAIN (all 20 models) |
+| AMP | GAIN, BASS, MID, TREBLE, PRES, MST (all models) |
+| REVERB | PRE DELAY, LEVEL, DECAY, TONE (all models) |
+| FX | models 1-2: Q, POSITION, PEAK, LEVEL; 3-5: RATE, RANGE, PEAK, LEVEL; 6: ATTACK, SENS, PEAK, LEVEL; 7-8: ATTACK, THRES, RATIO, LEVEL |
+| NS | 1: THRES; 2: SENS; 3: ATTACK, RELEASE, THRES (other bytes unused, default 20) |
+| EQ | 1: 100 Hz, 250 Hz, 630 Hz, 1.6 kHz, 4 kHz (6th unused); 2: 80, 240, 750 Hz, 2.2, 6.6 kHz (6th unused); 3: 100, 200, 400, 800 Hz, 1.6, 3.2 kHz; 4 (custom): frequencies are separate 16-bit values |
+| MOD | 1-3: RATE, LEVEL, DEPTH; 4-5: RATE, MIX, FEEDBACK; 6, 7, 11, 14: RATE, MIX, TONE; 8: RATE, DEPTH, TONE; 9, 10, 20: PITCH, MIX, TONE; 12-13: RATE, MIX, TONE, DEPTH; 15: RATE, MIX, Q; 16-17: RATE, MIX, RANGE; 18: RISE, LEVEL; 19: SAMPLE, MIX, BIT (unused bytes default to 50) |
+
+Check against 165 real presets: 134 of 138 "used" knobs vary, 12 of 14 "unused" knobs stay at their default.
+
+**Delay** (labels per model from the firmware; byte roles from its value handlers and from real presets):
+p0 = LEVEL, p1 = F.BACK (editor label order, not proven), p2 = placeholder (always 0), p3 = SUB-D note division
+(0 = off, 1 = 1/4, 2 = 1/4T, 3 = 1/4D, 4 = 1/8, 5 = 1/8T, 6 = 1/8D, 7 = 1/16, 8 = 1/16T, 9 = 1/16D; the strings table of
+the editor lists exactly these ten), p4 = THRES (DYNAMIC, model 8 only), p5 = SUB B (TWO-HEAD, model 9 only; the firmware
+copies byte 0x59 to SUB A, 0x5b to SUB B and the 16-bit value at 0x160 to TIME B).
+**Cabinet:** MIC (0-9), CENTER, DISTANCE (order from the editor, not proven), POWER TUBE (0-4).
+
+**16-bit values outside the module blocks** (little endian, offsets inside the 512-byte preset; located by matching the
+device's state frames with the stored image, checked on 165 presets): 344/346/348 = custom EQ frequencies in Hz
+(defaults 100/600/1250), 350 = delay time in ms (117..1066 seen), 352 = delay time B in ms (TWO-HEAD; 40 or 1000 in
+other presets), 354 = a modulation value (200 by default, 63..305 seen; meaning unknown). Bytes 356..359 hold more 16-bit
+values (1282, 1, 2, 2304 seen; unknown).
+Not mapped: control/EXP assignment flags (bytes 104..126, 128..136), the 0x64 at offset 10 (preset volume?), offset 354.
+
 ## Other frames in the hello reply [V content, meaning inferred]
 - 0x84: ASCII `2.0.4` + `MOOER_GE200` (firmware version + device name).
 - 0x85 and 0xE3: 150 bytes each = ten 15-byte NUL/space-padded ASCII names (cabinet/IR style names);

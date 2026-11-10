@@ -101,6 +101,18 @@ class ToneTests(unittest.TestCase):
             self.assertEqual(len(m["params"]), n - 2)
             self.assertTrue(all(0 <= v <= rg[k]["params"][i][1] for i, v in enumerate(m["params"])))
 
+    def test_wide_values_are_part_of_the_answer_and_are_clamped(self):
+        fake = FakeClient([good_answer(wide={"eq_freq_1": 1, "eq_freq_2": 600, "eq_freq_3": 999999,
+                                             "delay_time": 450, "delay_time_b": 5000})])
+        edit = tone.generate("x", self.base, self.presets, client=fake)["edit"]
+        self.assertEqual(edit["wide"]["delay_time"], 450)
+        self.assertEqual((edit["wide"]["eq_freq_1"], edit["wide"]["eq_freq_3"], edit["wide"]["delay_time_b"]), (20, 20000, 2000))
+        self.assertIn("wide", fake.calls[0][1]["output_config"]["format"]["schema"]["required"])
+        # missing wide section -> the base preset's values are kept
+        fake2 = FakeClient([good_answer()])
+        e2 = tone.generate("x", self.base, self.presets, client=fake2)["edit"]
+        self.assertEqual(e2["wide"], self.base.wide)
+
     def test_retry_once_on_bad_json_then_fail(self):
         fake = FakeClient(["not json", good_answer()])
         self.assertEqual(tone.generate("x", self.base, self.presets, client=fake)["edit"]["name"], "DREAM CLEAN")
@@ -153,6 +165,12 @@ class ToneWebTests(unittest.TestCase):
         self.assertEqual(self.post({"slot": 2, "description": ""})[0], 400)
         self.assertEqual(self.post({"slot": 2, "description": 5})[0], 400)
         self.assertEqual(self.post({"slot": 2, "description": "x"}, token=False)[0], 403)
+
+    def test_provider_and_model_come_from_a_whitelist_never_urls(self):
+        for bad in ({"provider": "http://evil.example/v1"}, {"provider": "a/b"}, {"model": "../x"}, {"model": "a b"},
+                    {"provider": 5}):
+            code, r = self.post({"slot": 2, "description": "x", **bad})
+            self.assertEqual(code, 400, bad)
 
     def test_state_reports_tone_availability(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/state") as r:

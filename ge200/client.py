@@ -31,6 +31,15 @@ class Snapshot:
                 snap._ingest(f)
         return snap
 
+    def name_tables(self) -> Dict[int, List[str]]:
+        """The two 10-entry name tables of the hello reply (0x85 and 0xE3): the unit's IR names and amp-capture names
+        (which is which is inferred from the content, and is checked by watching which table changes on an IR upload)."""
+        out: Dict[int, List[str]] = {}
+        for f in self.frames:
+            if f.cmd in (0x85, 0xE3) and len(f.data) == 150:
+                out[f.cmd] = [f.data[i:i + 15].split(b"\x00")[0].decode("latin-1").strip() for i in range(0, 150, 15)]
+        return out
+
     def _ingest(self, f: p.Frame) -> None:
         if f.cmd == p.CMD_PRESET and len(f.data) == 1 + PRESET_SIZE:
             self.presets[f.data[0]] = Preset.from_bytes(f.data[0], f.data[1:])
@@ -69,7 +78,7 @@ class Ge200:
 
     def __init__(self, hid=None, allow_write: bool = False) -> None:
         if hid is None:
-            from .hid_win import HidDevice
+            from .hid import HidDevice
             hid = HidDevice()
         self.hid = hid
         self.allow_write = allow_write
@@ -108,6 +117,18 @@ class Ge200:
         if len(raw) != PRESET_SIZE:
             raise ValueError(f"preset must be {PRESET_SIZE} bytes")
         self._send(CMD_WRITE_SLOT, bytes([slot]) + bytes(raw), settle_s)
+
+    # ----- impulse responses (frames deduced from the vendor editor; see PROTOCOL.md, "IR slots") -----
+    def write_ir(self, slot: int, samples, name: str, settle_s: float = 0.25) -> None:
+        """Upload an IR (exactly 512 floats in -1..1) to a user IR slot 0..9. Overwrites what the slot holds."""
+        from . import ir
+        for payload in ir.write_payloads(slot, samples, name):
+            self._send(ir.CMD_IR_WRITE, payload, settle_s)
+        time.sleep(0.5)
+
+    def clear_ir(self, slot: int) -> None:
+        from . import ir
+        self._send(ir.CMD_IR_CLEAR, ir.clear_payload(slot), 0.5)
 
     def close(self) -> None:
         self.hid.close()
