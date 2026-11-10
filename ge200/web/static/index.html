@@ -224,6 +224,17 @@
   .exp .btn { color: var(--ink); background: var(--paper-2); border-color: var(--line); box-shadow: none; margin-top: 8px; }
   .knob { position: relative; } .band { position: relative; }
   .knob[data-exp]::after, .band[data-exp]::after { content: attr(data-exp); position: absolute; top: -4px; right: -2px; background: var(--amber); color: #1d1405; font: 700 9px var(--hw); padding: 1px 5px; border-radius: 8px; box-shadow: 0 1px 3px #0008; z-index: 4; }
+  .mergebox { margin-top: 12px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  .mergebox h4 { margin: 0 0 4px; font: 700 13px var(--hw); }
+  .mrow { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px 30px; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid #0000000d; font-size: 13px; }
+  .mrow.head { font: 700 11px var(--hw); color: var(--mute); }
+  .mrow input { width: 100%; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  .mrow button { padding: 2px 0; }
+  .mrow .off { color: #8a4b00; font-size: 11px; }
+  .mergeadd { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .mergeadd select { flex: 1 1 220px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  .expg.merged select { opacity: .45; }
+  .mergechk { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; }
   /* IR page */
   .irgrid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
   @media (max-width: 900px) { .irgrid { grid-template-columns: 1fr; } }
@@ -360,7 +371,7 @@ async function api(path, body) {
 function editFrom(p) {
   const modules = {};
   for (const [k, m] of Object.entries(p.modules)) modules[k] = { type: m.type, enabled: m.enabled, params: m.params.slice() };
-  return { name: p.name, chain_order: p.chain_order.slice(), modules, wide: Object.assign({}, p.wide), exp: Object.assign({}, p.exp) };
+  return { name: p.name, chain_order: p.chain_order.slice(), modules, wide: Object.assign({}, p.wide), exp: Object.assign({}, p.exp), merge: { on: !!(p.merge && p.merge.on), heel: ((p.merge && p.merge.heel) || []).slice(), toe: ((p.merge && p.merge.toe) || []).slice() } };
 }
 const isDirty = () => cur && JSON.stringify(cur.edit) !== JSON.stringify(editFrom(cur.stored));
 
@@ -478,10 +489,13 @@ function makeKnob(o) {
 }
 // which expression pedal (if any) sweeps the knob called `label` of module `key`
 const normName = t => String(t || "").toUpperCase().replace(/[*?]/g, "").replace(/\s+/g, "");
-function expTag(key, label) {
+function mergeSlotActive(slot) { const M = cur.edit.merge; return !!(M && (M.heel[slot] || M.toe[slot])); }
+function expTag(key, label, pos) {
   const E = cur && cur.edit.exp, T = S.exp_targets; if (!E || !T) return "";
-  const out = [];
+  const out = [], merged = cur.edit.merge && cur.edit.merge.on;
+  if (merged && pos !== undefined && mergeSlotActive(6 * T.modules.indexOf(key) + pos)) out.push("MERGE");
   for (const [n, name] of [["exp1", "EXP1"], ["exp2", "EXP2"]]) {
+    if (n === "exp1" && merged) continue;
     if (T.modules[E[n + "_module"]] !== key) continue;
     const t = T.targets[key][E[n + "_target"]];
     if (t && normName(t) === normName(label)) out.push(name);
@@ -499,7 +513,7 @@ function labelFor(key, m, i, rg) {
   return { text: lab + (guess ? "?" : ""), guess, dim: lab === "(unused)",
     title: `${lab} (${fromDevice ? "the unit's own label for this model" : "confidence: " + conf}${!fromDevice && pi.note ? "; " + pi.note : ""})\nrange seen in your presets: ${rg.params[i][0]} to ${rg.params[i][1]}\nDouble-click resets, Shift = fine, wheel or arrow keys step` };
 }
-const titleExp = (key, label) => { const t = expTag(key, label); return t ? "\n" + t + " (expression pedal) moves this knob" : ""; };
+const titleExp = (key, label, pos) => { const t = expTag(key, label, pos); return t ? "\n" + t + " (expression pedal) moves this knob" : ""; };
 function modelPlate(key, m, repaint) {
   const tbl = S.names[key], rg = S.ranges[key];
   let t;
@@ -541,7 +555,7 @@ function moduleKnobs(key, m, kind) {
   const rg = S.ranges[key], stored = cur.stored.modules[key].params, painters = [], nodes = [];
   m.params.forEach((v, i) => {
     const k = makeKnob({ max: Math.max(100, rg.params[i][1], v), value: v, rest: stored[i], kind, onChange: x => { m.params[i] = x; scheduleLive(); } });
-    const paint = () => { const L = labelFor(key, m, i, rg); k.setLabel(L.text, L.guess, L.title + titleExp(key, L.text), L.dim, expTag(key, L.text)); };
+    const paint = () => { const L = labelFor(key, m, i, rg); k.setLabel(L.text, L.guess, L.title + titleExp(key, L.text, i), L.dim, expTag(key, L.text, i)); };
     paint(); painters.push(paint); nodes.push(k.root);
   });
   return { nodes, repaint: () => painters.forEach(f => f()) };
@@ -568,8 +582,8 @@ function pedalView(key, i) {
       f.type = "range"; f.min = 0; f.max = Math.max(100, rg.params[idx][1], v); f.value = v; f.setAttribute("aria-label", "band " + (idx + 1));
       f.oninput = () => { m.params[idx] = parseInt(f.value, 10); val.textContent = f.value; scheduleLive(); };
       f.ondblclick = () => { f.value = stored[idx]; f.oninput(); };
-      const paint = () => { const L = labelFor(key, m, idx, rg); lab.textContent = L.text; lab.style.fontStyle = L.guess ? "italic" : "normal"; b.title = L.title + titleExp(key, L.text);
-        const tag = expTag(key, L.text); if (tag) b.dataset.exp = tag; else delete b.dataset.exp; };
+      const paint = () => { const L = labelFor(key, m, idx, rg); lab.textContent = L.text; lab.style.fontStyle = L.guess ? "italic" : "normal"; b.title = L.title + titleExp(key, L.text, idx);
+        const tag = expTag(key, L.text, idx); if (tag) b.dataset.exp = tag; else delete b.dataset.exp; };
       paint(); painters.push(paint); b.append(f, val, lab); body2.appendChild(b);
     });
     repaint = () => painters.forEach(f => f());
@@ -721,9 +735,10 @@ function expGroup(id, title) {
   MODULES.forEach(([k, l], i) => mod.add(new Option(l, i)));
   const status = () => {
     const key = T.modules[E[id + "_module"]], name = T.targets[key][E[id + "_target"]], m = cur.edit.modules[key];
-    const has = modelKnobNames(key).includes(normName(name));
-    info.classList.toggle("warn", !m.enabled || !has);
-    info.textContent = !m.enabled ? "The " + TITLES[key] + " module is switched off, so the pedal moves nothing until you turn it on."
+    const has = modelKnobNames(key).includes(normName(name)), merged = id === "exp1" && cur.edit.merge.on;
+    g.classList.toggle("merged", merged); mod.disabled = tgt.disabled = merged;
+    info.classList.toggle("warn", !merged && (!m.enabled || !has));
+    info.textContent = merged ? "MERGE is on: this pedal moves the knobs listed below instead of one target." : !m.enabled ? "The " + TITLES[key] + " module is switched off, so the pedal moves nothing until you turn it on."
       : !has ? "The current " + TITLES[key] + " model has no knob called " + name + ", so the pedal does nothing here."
       : key === "fx" && E[id + "_target"] === 0 ? "Wah position. Stepping on the toe switch also turns the wah on and off." : "Sweeps " + TITLES[key] + ": " + name + ".";
   };
@@ -739,14 +754,66 @@ function expGroup(id, title) {
   g._refresh = () => { mod.value = E[id + "_module"]; fillTargets(); status(); };
   return g;
 }
+function mergeKnobList() {
+  const out = [];
+  S.exp_targets.modules.forEach((key, k) => {
+    const m = cur.edit.modules[key], rg = S.ranges[key];
+    m.params.forEach((v, pos) => {
+      const L = labelFor(key, m, pos, rg); if (L.dim) return;            // the model has no knob in this position
+      out.push({ key, pos, slot: 6 * k + pos, label: TITLES[key] + ": " + L.text.replace(/[?]$/, ""), max: Math.max(100, rg.params[pos][1]), cur: v });
+    });
+  });
+  return out;
+}
+function mergeEditor(onChange) {
+  const box = el("div", "mergebox"), M = cur.edit.merge;
+  const draw = () => {
+    box.textContent = "";
+    box.appendChild(el("h4", "", "Knobs moved together by the pedal"));
+    box.appendChild(el("div", "note", "Heel is the pedal all the way back, toe all the way forward; each knob moves in a straight line from its heel value to its toe value. A knob whose two values are both 0 is not part of the merge."));
+    const list = mergeKnobList(), bySlot = Object.fromEntries(list.map(x => [x.slot, x]));
+    const head = el("div", "mrow head"); head.append(el("span", "", "Knob"), el("span", "", "Heel"), el("span", "", "Toe"), el("span", ""));
+    box.appendChild(head);
+    const active = []; for (let sl = 0; sl < 54; sl++) if (M.heel[sl] || M.toe[sl]) active.push(sl);
+    if (!active.length) box.appendChild(el("div", "note", "No knob yet: add one below."));
+    active.forEach(sl => {
+      const info = bySlot[sl], row = el("div", "mrow"), lab = el("span", "", info ? info.label : (TITLES[S.exp_targets.modules[Math.floor(sl / 6)]] + ": knob " + (sl % 6 + 1)));
+      if (!info) lab.appendChild(el("div", "off", "not on the current model"));
+      const mk = which => { const i = el("input"); i.type = "number"; i.min = 0; i.max = 255; i.value = M[which][sl];
+        i.onchange = () => { const v = Math.max(0, Math.min(255, parseInt(i.value, 10) || 0)); M[which][sl] = v; i.value = v; onChange(false); }; return i; };
+      const rm = el("button", "btn", "x"); rm.type = "button"; rm.title = "Remove this knob from the merge";
+      rm.onclick = () => { M.heel[sl] = 0; M.toe[sl] = 0; draw(); onChange(false); };
+      row.append(lab, mk("heel"), mk("toe"), rm); box.appendChild(row);
+    });
+    const free = list.filter(x => !(M.heel[x.slot] || M.toe[x.slot]));
+    const add = el("div", "mergeadd"), sel = el("select"), btn = el("button", "btn", "Add this knob");
+    sel.setAttribute("aria-label", "Knob to add"); btn.type = "button";
+    free.forEach(x => sel.add(new Option(x.label, x.slot)));
+    btn.onclick = () => {
+      const x = free.find(f => String(f.slot) === sel.value); if (!x) return;
+      M.heel[x.slot] = 0; M.toe[x.slot] = Math.min(x.max, x.cur || 50);      // sweeps from nothing up to the preset's own value
+      draw(); onChange(false);
+    };
+    add.append(sel, btn); box.appendChild(add);
+  };
+  draw();
+  return box;
+}
 function expView() {
   const box = el("div", "exp"), row = el("div", "exprow");
   box.appendChild(el("h3", "", "Expression pedals"));
   const g1 = expGroup("exp1", "EXP: the built-in pedal"), g2 = expGroup("exp2", "EXP2: an external pedal");
   row.append(g1, g2); box.appendChild(row);
+  const mchk = el("label", "mergechk"), cb = el("input"); cb.type = "checkbox"; cb.checked = cur.edit.merge.on;
+  mchk.append(cb, document.createTextNode("MERGE on the built-in pedal: it moves several knobs at once, each between its own heel and toe value"));
+  box.appendChild(mchk);
+  const host = el("div"); box.appendChild(host);
+  const refresh = () => { host.textContent = ""; if (cur.edit.merge.on) host.appendChild(mergeEditor(() => { drawBoard(); scheduleLive(); })); g1._refresh(); };
+  cb.onchange = () => { cur.edit.merge.on = cb.checked; refresh(); drawBoard(); scheduleLive(); };
+  refresh();
   const reset = el("button", "btn", "Back to the default assignment (volume)");
   reset.onclick = () => { Object.assign(cur.edit.exp, { exp1_module: 1, exp1_target: 0, exp2_module: 2, exp2_target: 5 }); g1._refresh(); g2._refresh(); drawBoard(); scheduleLive(); };
-  box.append(reset, el("div", "note", "Each pedal sweeps one knob of one module (the knob gets an EXP tag on the board). Pedal calibration and MERGE (one pedal moving several knobs, each with its own heel and toe value) are not editable here yet: a preset that uses MERGE keeps it untouched."));
+  box.append(reset, el("div", "note", "Each pedal sweeps one knob of one module (the knob gets an EXP tag on the board); with MERGE the built-in pedal sweeps several knobs, each from its heel to its toe value. Not editable here: MERGE on the external pedal (how it is stored is not known) and the pedal calibration."));
   return box;
 }
 

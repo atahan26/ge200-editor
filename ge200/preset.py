@@ -35,7 +35,7 @@ def apply_edit(raw: bytes, edit: dict) -> bytes:
     """
     if len(raw) != PRESET_SIZE:
         raise EditError("preset image must be 512 bytes")
-    unknown = set(edit) - {"name", "chain_order", "modules", "wide", "exp"}
+    unknown = set(edit) - {"name", "chain_order", "modules", "wide", "exp", "merge"}
     if unknown:
         raise EditError(f"unknown edit fields: {sorted(unknown)}")
     out = bytearray(raw)
@@ -69,6 +69,33 @@ def apply_edit(raw: bytes, edit: dict) -> bytes:
                 raise EditError(f"{n}: module must be 0..8 and target must exist in that module's list")
         for k, o in EXP_FIELDS.items():
             out[o] = merged[k]
+    merge = edit.get("merge")
+    if merge is not None:
+        if not isinstance(merge, dict) or set(merge) - {"on", "heel", "toe"}:
+            raise EditError("merge must be an object with the keys on, heel, toe")
+        if "on" in merge:
+            if not isinstance(merge["on"], bool):
+                raise EditError("merge.on must be true or false")
+            out[MERGE_FLAG] = 1 if merge["on"] else 0
+        for which, base in (("heel", MERGE_HEEL), ("toe", MERGE_TOE)):
+            if which not in merge:
+                continue
+            values = merge[which]
+            if isinstance(values, list):
+                if len(values) != MERGE_SLOTS:
+                    raise EditError(f"merge.{which} must have {MERGE_SLOTS} values")
+                items = list(enumerate(values))
+            elif isinstance(values, dict):
+                items = list(values.items())
+            else:
+                raise EditError(f"merge.{which} must be a list of {MERGE_SLOTS} values or a slot -> value object")
+            for slot, v in items:
+                slot = int(slot) if isinstance(slot, str) and slot.isdigit() else slot
+                if not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot < MERGE_SLOTS:
+                    raise EditError(f"merge slot must be 0..{MERGE_SLOTS - 1}")
+                if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 255:
+                    raise EditError(f"merge.{which} values must be integers 0..255")
+                out[base + slot] = v
     layout = {k: (o, n) for k, o, n in MODULE_LAYOUT}
     for key, m in edit.get("modules", {}).items():
         if key not in layout:
@@ -137,6 +164,19 @@ EXP_TARGETS = {
 }
 EXP_MODULE_KEYS = [k for k, _, _ in MODULE_LAYOUT]
 
+# MERGE [V]: one pedal (the built-in EXP) sweeps several knobs at once. Byte 126 is the switch (1 in exactly the 21 of 200
+# real presets that have any heel/toe data, 0 in all others). The data is 54 slots, ``heel`` at 128 + slot and ``toe`` at
+# 182 + slot, slot = 6 * module index + the knob's position in its module block (0..5, MODULE_LAYOUT order). The unit
+# computes ``heel + (toe - heel) * pedal% / 100`` and writes it to that knob (static analysis of the firmware: the slot
+# blocks around 0x0803d1f0 store into preset bytes 55, 56, 70..75, 78, 86, 87, 90 ... = exactly 28 + 8 * module + 2 +
+# position). A slot with heel = toe = 0 is not part of the merge. Checked on the real presets: all 100 entries point at a
+# knob the module's model really has. EXP2's own merge flag (byte 127?) is not decoded and left alone.
+MERGE_FLAG, MERGE_HEEL, MERGE_TOE, MERGE_SLOTS = 126, 128, 182, 54
+
+
+def merge_slot(module_index: int, position: int) -> int:
+    return 6 * module_index + position
+
 
 def exp_valid(module: int, target: int) -> bool:
     return (isinstance(module, int) and isinstance(target, int) and not isinstance(module, bool)
@@ -160,6 +200,7 @@ class Preset:
     raw: bytes               # the full 512 bytes
     wide: Dict[str, int] = field(default_factory=dict)   # 16-bit values, see WIDE_FIELDS
     exp: Dict[str, int] = field(default_factory=dict)    # expression pedal assignment, see EXP_FIELDS
+    merge: Dict[str, object] = field(default_factory=dict)   # {"on": bool, "heel": [54 ints], "toe": [54 ints]}
 
     @classmethod
     def from_bytes(cls, index: int, raw: bytes) -> "Preset":
@@ -173,7 +214,10 @@ class Preset:
         }
         wide = {k: int.from_bytes(raw[o:o + 2], "little") for k, o in WIDE_FIELDS.items()}
         exp = {k: raw[o] for k, o in EXP_FIELDS.items()}
-        return cls(index=index, name=name, chain_order=list(raw[0:9]), modules=modules, raw=raw, wide=wide, exp=exp)
+        merge = {"on": bool(raw[MERGE_FLAG]), "heel": list(raw[MERGE_HEEL:MERGE_HEEL + MERGE_SLOTS]),
+                 "toe": list(raw[MERGE_TOE:MERGE_TOE + MERGE_SLOTS])}
+        return cls(index=index, name=name, chain_order=list(raw[0:9]), modules=modules, raw=raw, wide=wide, exp=exp,
+                   merge=merge)
 
     def to_dict(self, names: Optional[Dict[str, List[str]]] = None) -> dict:
         mods = {}
@@ -190,5 +234,7 @@ class Preset:
             "modules": mods,
             "wide": dict(self.wide),
             "exp": dict(self.exp),
+            "merge": {"on": self.merge.get("on", False), "heel": list(self.merge.get("heel", [])),
+                      "toe": list(self.merge.get("toe", []))},
             "raw": self.raw.hex(),
         }

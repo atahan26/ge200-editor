@@ -90,3 +90,39 @@ def json_answer(**over):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MergeTests(unittest.TestCase):
+    def setUp(self):
+        raw = bytearray(PRESET_SIZE)
+        raw[0:9] = bytes(range(1, 10))
+        self.base = bytes(raw)
+
+    def test_decoding_layout_and_default(self):
+        from ge200.preset import MERGE_SLOTS, merge_slot
+        p = Preset.from_bytes(0, self.base)
+        self.assertEqual((p.merge["on"], len(p.merge["heel"]), len(p.merge["toe"])), (False, MERGE_SLOTS, MERGE_SLOTS))
+        self.assertEqual(merge_slot(2, 0), 12)        # AMP first knob (GAIN)
+        self.assertEqual(merge_slot(3, 1), 19)        # CAB second knob, preset byte 55
+        self.assertEqual(merge_slot(7, 4), 46)        # DELAY fifth knob, preset byte 90
+        self.assertEqual(merge_slot(8, 5) + 1, MERGE_SLOTS)
+
+    def test_edit_writes_heel_toe_and_flag_only(self):
+        out = apply_edit(self.base, {"merge": {"on": True, "heel": {12: 21, "13": 60}, "toe": {12: 33, 13: 45}}})
+        changed = {i: out[i] for i in range(PRESET_SIZE) if out[i] != self.base[i]}
+        self.assertEqual(changed, {126: 1, 128 + 12: 21, 128 + 13: 60, 182 + 12: 33, 182 + 13: 45})
+        p = Preset.from_bytes(0, out)
+        self.assertTrue(p.merge["on"])
+        self.assertEqual((p.merge["heel"][12], p.merge["toe"][13]), (21, 45))
+        full = apply_edit(out, {"merge": p.merge})                         # a round trip changes nothing
+        self.assertEqual(full, out)
+        off = apply_edit(out, {"merge": {"on": False}})                    # switching off keeps the data
+        self.assertEqual((off[126], off[128 + 12]), (0, 21))
+
+    def test_bad_merge_values_are_refused(self):
+        for bad in ({"on": 1}, {"heel": [0] * 53}, {"heel": {54: 1}}, {"heel": {-1: 1}}, {"toe": {0: 256}},
+                    {"toe": {0: True}}, {"heel": 5}, {"nope": 1}, {"heel": {"x": 1}}):
+            with self.assertRaises(EditError, msg=str(bad)):
+                apply_edit(self.base, {"merge": bad})
+        with self.assertRaises(EditError):
+            apply_edit(self.base, {"merge": []})

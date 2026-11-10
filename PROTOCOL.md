@@ -171,10 +171,20 @@ model really has in 114 cases (names compared with the firmware-derived knob lab
 DS VOLUME + AMP MST, i.e. volume, and it is what the empty presets hold. FX POSITION is the wah pedal position (the manual: this
 kind of target also switches the block on and off with the toe switch). Written by `apply_edit({"exp": {...}})`, which
 refuses values outside the lists.
-**Not decoded:** MERGE (one pedal on several parameters, each with a heel and a toe value; in the manual only), the pedal
-calibration, and the meaning of byte 11 (a 0/1 flag; the manual's "EXP VOL PEDAL" is a candidate). Candidate for the MERGE
-data [S]: in presets that have non-zero bytes in 128..181 there is often a second group exactly 54 bytes later (e.g. 140, 141,
-142, 145 and 194, 195, 196, 199), which looks like heel values and toe values for the same parameter slots.
+**MERGE (bytes 126, 128..235) [V].** In the editor and the manual MERGE lets one pedal move several knobs, each from a heel value
+to a toe value. Byte **126** is the switch: it is 1 in exactly the 21 of 200 real presets that have any heel/toe data and 0 in
+all others (the state frame 0xBB carries it as its first byte). The data is **54 slots**: `heel` at **128 + slot**, `toe` at
+**182 + slot**, with **slot = 6 x module index + the knob's position in its module block** (module index 0..8 in block order,
+position 0..5 = the p0..p5 bytes after type and enable, i.e. preset byte `28 + 8 x module + 2 + position`). 9 x 6 = 54. A slot
+whose heel and toe are both 0 is not part of the merge (real presets list a handful of slots, never one with heel = toe != 0).
+How it was found: the firmware's MERGE code (around 0x0803d1f0, one block per slot) reads heel and toe, computes
+`heel + (toe - heel) * pedal% / 100` and stores the result into the preset byte of that knob (slot 19 -> byte 55 = CAB p1,
+slots 30..35 -> bytes 70..75 = the six EQ bands, 36 -> 78, 42 -> 86, 43 -> 87, 46 -> 90: exactly the formula above), and the
+data agrees: **all 100 entries in the real presets point at a knob the module's model really has**, and typical uses make
+sense (e.g. delay LEVEL, delay F.BACK, reverb LEVEL, reverb DECAY from 0 to 100 on models whose delay and reverb are off:
+the pedal swells them in). While byte 126 is 1 the stored EXP module/target bytes (356, 357) are ignored by the editor (it
+shows "EXP: MERGE"). The editor also has an "EXP2: MERGE" state; where it is stored is not known (byte 127 is 0 in all 200
+presets and is the candidate), so it is left alone. Not decoded: the pedal calibration and the meaning of byte 11.
 
 **Byte 10** (50..100, 100 in 166 of 200 presets) is not the pedal's volume range: it is a separate per-preset level, most likely
 the editor's preset volume [S]. Byte 9 is 0 in all presets.
@@ -209,7 +219,7 @@ device's state frames with the stored image, checked on 165 presets): 344/346/34
 (defaults 100/600/1250), 350 = delay time in ms (117..1066 seen), 352 = delay time B in ms (TWO-HEAD; 40 or 1000 in
 other presets), 354 = a modulation value (200 by default, 63..305 seen; meaning unknown). Bytes 356..359 hold more 16-bit
 values (1282, 1, 2, 2304 seen; unknown).
-Not mapped: bytes 104..115, 116..124 (nine flags, see the state-frame section), 125, 126, the MERGE data (128..235?), the 0x64 at offset 10 (preset level, probably), offset 354. The expression pedal assignment IS mapped (bytes 356..359).
+Not mapped: bytes 104..115, 116..124 (nine flags, see the state-frame section), 125, 127, the 0x64 at offset 10 (preset level, probably), offset 354. The expression pedal assignment (bytes 356..359) and MERGE (126, 128..235) ARE mapped.
 
 ## Other frames in the hello reply [V content, meaning inferred]
 - 0x84: ASCII `2.0.4` + `MOOER_GE200` (firmware version + device name).
