@@ -99,6 +99,10 @@ Ayrıntılar ve açık sorular [PROTOCOL.md](PROTOCOL.md) içinde; her özellik 
 | `PROTOCOL.md` | Neyin doğrulandığı, neyin sadece tahmin olduğu |
 | `AGENTS.md` | Yapay zeka kod ajanları için talimatlar |
 
+## Yol haritası
+
+- **Sahne için taşınabilir NAM düzeneği (plan, devam eden çalışma).** Yazar, GE200'ün yanında bir Raspberry Pi 5 ve bir Focusrite Scarlett Solo (3. nesil) ile Neural Amp Modeler'ı sahnede denemeyi planlıyor. **Bu yalnızca bir plan: henüz hiçbir şey yapılmadı veya denenmedi ve bu repoda bunun için kod yok.** Notlar ve açık sorular: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Bir yapay zeka ajanıyla kullan
 
 Bu bloğu klonunda açık olan Claude Code, Codex, Cursor veya başka bir kod ajanına yapıştır:

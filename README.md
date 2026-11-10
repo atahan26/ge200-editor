@@ -99,6 +99,10 @@ Details and the open questions are in [PROTOCOL.md](PROTOCOL.md); every feature 
 | `PROTOCOL.md` | What is verified and what is only inferred |
 | `AGENTS.md` | Instructions for AI coding agents |
 
+## Roadmap
+
+- **Portable NAM rig for the stage (a plan, work in progress).** The author plans to try Neural Amp Modeler on stage with a Raspberry Pi 5 and a Focusrite Scarlett Solo (3rd gen) next to the GE200. **This is only a plan: nothing is built or tested yet and there is no code for it in this repository.** Notes and open questions: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Use it with an AI agent
 
 Copy this block into Claude Code, Codex, Cursor or any coding agent opened in your clone:

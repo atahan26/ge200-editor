@@ -96,6 +96,10 @@ http://127.0.0.1:8200/ 을 여세요. 장치 전체를 읽는 데 약 16초가 �
 | `PROTOCOL.md` | 검증된 것과 추측에 불과한 것 |
 | `AGENTS.md` | AI 코딩 에이전트를 위한 안내 |
 
+## 로드맵
+
+- **무대용 휴대형 NAM 구성 (계획, 진행 중).** 저자는 GE200 옆에 Raspberry Pi 5와 Focusrite Scarlett Solo(3세대)를 두고 무대에서 Neural Amp Modeler를 시험해 볼 계획입니다. **아직 계획일 뿐입니다: 만들거나 시험한 것은 없고 이 저장소에 관련 코드도 없습니다.** 메모와 남은 질문: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## AI 에이전트와 함께 쓰기
 
 복제한 저장소에서 연 Claude Code, Codex, Cursor 등의 코딩 에이전트에 아래 블록을 붙여 넣으세요:

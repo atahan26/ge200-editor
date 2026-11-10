@@ -96,6 +96,10 @@ py -3 -m venv .venv
 | `PROTOCOL.md` | 哪些已验证，哪些只是推测 |
 | `AGENTS.md` | 给 AI 编程代理的说明 |
 
+## 路线图
+
+- **舞台用便携 NAM 方案（计划，进行中）。** 作者打算在 GE200 旁边用 Raspberry Pi 5 和 Focusrite Scarlett Solo（第三代）在舞台上试用 Neural Amp Modeler。**这只是计划：目前尚未构建或测试，本仓库中也没有相关代码。** 说明和未解决的问题见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
 ## 与 AI 代理一起使用
 
 把下面这段复制到在你的克隆目录中打开的 Claude Code、Codex、Cursor 或其他编程代理里：
