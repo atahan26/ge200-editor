@@ -215,12 +215,12 @@ Not mapped: control/EXP assignment flags (bytes 104..126, 128..136), the 0x64 at
 - The device sends nothing unsolicited (no notification when a preset is changed on the unit itself): a host
   that wants to know the active preset has to ask with a hello (16 s).
 
-## IR slots and amp import [S: static analysis of the editor, NOT yet tried on the device]
+## IR slots and amp import [S: static analysis of the editor; IR upload tried on a device, see below]
 The preset's CAB model numbers 27..36 are the ten **user IR slots** (IR-1..IR-10 -> slot 0..9) and the amp models
 56..65 are ten user amp slots ("EMPTY" until something is imported). The editor imports IRs from `*.wav` / `*.GIR`
 and amps from `*.amp` / `*.GNR` files.
 
-IR upload (`ge200/ir.py` implements the conversion and the frames; the device behaviour is still to be verified):
+IR upload (`ge200/ir.py` implements the conversion and the frames). **[V]** One upload (`ir-upload 9 file --name "YORK V30 57" --write`, 512-sample 24-bit file) was accepted by a real unit: the next hello reply showed the new name in entry 9 of name table 0x85 and nothing else in the tables changed. Whether the IR *sounds* right (level, polarity, which cab model number selects it) has not been judged by ear yet:
 - Device audio rate is 44.1 kHz (USB audio descriptor [V]). An IR is **512 samples, 24-bit signed**. The editor takes the
   first 512 samples of the file unchanged (no resampling or normalisation seen), converts each with
   `trunc(clamp(x, +-0.99999899) * 2^23)` to 24-bit two's complement.
@@ -228,7 +228,8 @@ IR upload (`ge200/ir.py` implements the conversion and the frames; the device be
   middle bytes, phase 3 = the 512 low bytes (one byte per sample each), phase 4 = the 15-byte name (upper-case ASCII,
   NUL padded). LEN = 515 for phases 1-3, 18 for phase 4.
 - Clear a slot: `CMD 0xE4` with the slot number (the editor then shows the name `EMPTY`).
-- No acknowledgement frame is known; the IR names (ten 15-byte entries) are in the hello reply (0x85 / 0xE3).
+- No acknowledgement frame is known; the IR names (ten 15-byte entries) are in the hello reply: table **0x85 = the ten user IR slots [V]**, 0xE3 = names that look like the ten user amp slots [S].
+- Storage (static analysis of firmware 2.0.3, base address = 0x08000000 - 0x280 + file offset): the command dispatcher near 0x08001f9a compares the command byte with 0xE0/0xE1/0xE2/0xE4/0xE5; CMD 0xE4 (clear IR) erases 4 KB sectors at 0x50000 + (slot >> 1) * 0x1000, i.e. two IRs share a sector. The number of slots is therefore a firmware constant plus a storage layout, not something the protocol can change.
 
 Amp import (`*.amp` / `*.GNR`) uses `CMD 0xE2` in phases as well (name up to 20 chars plus a data block). Those files are
 Mooer's own capture format; its layout is unknown (no sample file analysed), and a NAM model is not that format.

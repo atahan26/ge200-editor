@@ -6,110 +6,238 @@
 <meta name="ge200-token" content="__TOKEN__">
 <title>GE200 editor</title>
 <style>
-  :root { --bg:#f4f3ef; --panel:#ffffff; --ink:#1c1b19; --mute:#6c6a63; --line:#e0ded6; --accent:#c2410c; --accent-ink:#fff; --accent-soft:#fdeee6;
-          --ok:#15803d; --bad:#b91c1c; --chip:#efede7; --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.04); --radius:12px; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121211; --panel:#1c1b19; --ink:#ecebe5; --mute:#9b9990; --line:#302f2b; --accent:#fb923c; --accent-ink:#1a0f06; --accent-soft:#2b1d12; --chip:#262522; --ok:#4ade80; --bad:#f87171; --shadow:0 1px 2px rgba(0,0,0,.4); } }
-  :root[data-theme="dark"] { --bg:#121211; --panel:#1c1b19; --ink:#ecebe5; --mute:#9b9990; --line:#302f2b; --accent:#fb923c; --accent-ink:#1a0f06; --accent-soft:#2b1d12; --chip:#262522; --ok:#4ade80; --bad:#f87171; --shadow:0 1px 2px rgba(0,0,0,.4); }
+  /* Design notes: the page is a pedalboard. Modules sit in signal-chain order, each drawn like the hardware it
+     stands for (stompbox, amp head, speaker cabinet, graphic EQ). Chrome around it stays quiet: a steel top bar and a
+     paper setlist. Silkscreen text uses a DIN-like face where the OS has one. */
+  :root {
+    --steel: #2b3137; --steel-2: #1f2428; --hole: #171b1f; --paper: #eceeef; --paper-2: #dfe2e4; --ink: #14181b; --mute: #5b646b;
+    --line: #c5cacd; --led: #ff3b2f; --amber: #f2b13c; --good: #1f7a46; --bad: #b3261e;
+    --hw: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+    --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --u: 176px; --gap: 34px;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  header { display:flex; gap:12px; align-items:center; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; position:sticky; top:0; z-index:5; }
-  header h1 { font-size:16px; margin:0; display:flex; align-items:center; gap:8px; letter-spacing:.2px; }
-  header h1::before { content:""; width:10px; height:10px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
-  header .meta { color:var(--mute); font-size:12px; background:var(--chip); padding:3px 10px; border-radius:999px; }
-  header .spacer { flex:1; }
-  button { font:inherit; padding:6px 12px; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; cursor:pointer; transition:background .12s, border-color .12s; }
-  button:hover:not(:disabled) { border-color:var(--mute); background:var(--chip); }
-  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
-  button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  button:disabled { opacity:.45; cursor:not-allowed; }
-  main { display:grid; grid-template-columns: 270px 1fr; gap:18px; padding:18px 20px; max-width:1280px; margin:0 auto; align-items:start; }
-  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding:12px; } #list { max-height:240px; } aside { position:static; } }
-  aside, section { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
-  aside { display:flex; flex-direction:column; min-height:0; position:sticky; top:62px; overflow:hidden; }
-  aside input { margin:10px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
-  #list { overflow:auto; max-height:calc(100vh - 170px); }
-  .row { display:flex; gap:8px; align-items:center; padding:7px 14px; cursor:pointer; border-top:1px solid var(--line); }
-  .row:hover { background:var(--chip); }
-  .row.sel { background:var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-  .row .n { width:30px; color:var(--mute); font-variant-numeric: tabular-nums; font-size:12px; }
-  .row .act { width:10px; color:var(--accent); font-weight:700; font-size:10px; }
-  section { padding:16px 18px; }
-  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:-16px -18px 14px; padding:12px 18px; border-bottom:1px solid var(--line); position:sticky; top:49px; background:var(--panel); border-radius:var(--radius) var(--radius) 0 0; z-index:3; }
-  .bar input[type=text] { padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font-weight:700; font-size:15px; width:210px; letter-spacing:.5px; }
-  .chain { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:16px; padding:10px; background:var(--chip); border-radius:var(--radius); }
-  .chain .arrow { color:var(--mute); font-size:12px; }
-  .chip { --mc:var(--mute); background:var(--panel); border:1px solid var(--line); border-top:3px solid var(--mc); border-radius:8px; padding:3px 4px 3px 10px; display:flex; gap:2px; align-items:center; font-size:12px; font-weight:600; transition:opacity .15s; }
-  .chip.off { opacity:.45; border-top-color:var(--line); }
-  .chip button { padding:0 6px; border:none; background:none; color:var(--mute); font-weight:400; }
-  .chip button:hover:not(:disabled) { color:var(--ink); background:none; }
-  .cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap:14px; }
-  .card { --mc:var(--mute); border:1px solid var(--line); border-left:4px solid var(--mc); border-radius:10px; padding:10px 14px 12px; background:var(--panel); transition:opacity .15s; }
-  .card.off { opacity:.5; }
-  .card h3 { margin:0 0 8px; font-size:13px; display:flex; gap:8px; align-items:center; }
-  .card h3 .sp { flex:1; }
-  .card h3 .ttl { font-weight:700; letter-spacing:.2px; }
-  .card select, .card input[type=number] { padding:4px 6px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); max-width:180px; font:inherit; }
-  input.sw { appearance:none; -webkit-appearance:none; width:30px; height:17px; border-radius:999px; background:var(--line); position:relative; cursor:pointer; transition:background .15s; flex:none; margin:0; }
-  input.sw::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:#fff; transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.3); }
-  input.sw:checked { background:var(--mc, var(--accent)); } input.sw:checked::after { transform:translateX(13px); }
-  .param { display:grid; grid-template-columns: 96px 1fr 54px; gap:8px; align-items:center; margin:5px 0; font-size:12px; color:var(--mute); }
-  .param input[type=range] { width:100%; accent-color: var(--mc, var(--accent)); }
-  .param input[type=number] { width:54px; text-align:right; }
-  .param span[title] { cursor:help; }
-  dialog { border:1px solid var(--line); border-radius:14px; background:var(--panel); color:var(--ink); width:min(580px, 94vw); padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.35); max-height:90vh; overflow:auto; }
-  dialog::backdrop { background:rgba(0,0,0,.5); backdrop-filter:blur(2px); }
-  dialog label { display:block; font-size:12px; color:var(--mute); margin-top:10px; }
-  dialog input, dialog textarea { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
-  dialog fieldset.gcard { border:1px solid var(--line); border-radius:10px; margin:12px 0 0; padding:4px 12px 12px; }
-  dialog fieldset.gcard legend { color:var(--accent); font-weight:700; padding:0 6px; }
-  dialog .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
-  #status { position:fixed; bottom:16px; left:50%; transform:translate(-50%, 10px); background:var(--ink); color:var(--bg); padding:9px 16px; border-radius:10px; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; max-width:90vw; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:20; }
-  #status.show { opacity:.97; transform:translate(-50%, 0); } #status.err { background:var(--bad); color:#fff; }
-  nav.tabs { display:flex; gap:2px; background:var(--chip); padding:3px; border-radius:10px; }
-  nav.tabs button { border:none; background:none; padding:5px 14px; border-radius:7px; }
-  nav.tabs button.on { background:var(--panel); box-shadow:var(--shadow); font-weight:600; }
-  .namgrid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
-  .namgrid label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--mute); }
-  .namgrid select, .namgrid input { padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
-  [hidden] { display:none !important; }
-  .note { color:var(--mute); font-size:12px; margin-top:12px; }
-  .tone { border:1px solid var(--line); background:linear-gradient(180deg, var(--accent-soft), transparent 70%); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; }
-  .tone .trow { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
-  .tone textarea { flex:1 1 320px; resize:vertical; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); font:inherit; min-height:64px; }
-  .tone .side { display:flex; flex-direction:column; gap:6px; min-width:200px; }
-  .tone .side select, .tone .side input { padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); font:inherit; width:100%; }
-  .tone .note { margin-top:10px; display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
-  .tone .notes-box { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; color:var(--ink); }
-  label.inl { display:flex; gap:6px; align-items:center; color:var(--mute); font-size:12px; }
-  .dirty { color:var(--accent); font-size:12px; font-weight:700; }
-  kbd { background:var(--chip); border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:0 5px; font-size:11px; }
-  .empty { text-align:center; color:var(--mute); padding:60px 16px; }
-  .empty b { display:block; color:var(--ink); font-size:15px; margin-bottom:4px; }
-</style>
+  html { color-scheme: dark; }
+  body { margin: 0; background: var(--steel-2); color: var(--paper); font: 14px/1.45 var(--ui); }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  button { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
 
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 18px; padding: 8px 20px; background: var(--steel); border-bottom: 1px solid #00000066;
+         position: sticky; top: 0; z-index: 20; flex-wrap: wrap; box-shadow: 0 2px 10px #0006; }
+  .brand { font: 700 20px/1 var(--hw); letter-spacing: .06em; }
+  .tabs { display: flex; gap: 2px; }
+  .tabs button { background: none; border: 0; padding: 6px 12px; border-radius: 6px; color: #c9d0d5; cursor: pointer; }
+  .tabs button.on { background: #00000040; color: #fff; box-shadow: inset 0 -2px 0 var(--amber); border-radius: 6px 6px 0 0; }
+  .stat { display: flex; gap: 16px; margin: 0; color: #aab3ba; font-size: 12px; }
+  .stat div { display: flex; gap: 5px; } .stat dt { color: #7f8991; } .stat dd { margin: 0; color: #e8ecef; font-variant-numeric: tabular-nums; }
+  .spacer { flex: 1; }
+  .btn { background: #3a424a; border: 1px solid #00000055; border-radius: 6px; padding: 6px 12px; cursor: pointer; box-shadow: inset 0 1px 0 #ffffff1f; }
+  .btn:hover:not(:disabled) { background: #46505a; }
+  .btn.go { background: var(--amber); color: #1d1405; border-color: #8a6516; font-weight: 700; }
+  .btn.go:hover:not(:disabled) { background: #ffc254; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* layout */
+  .work { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; padding: 20px; max-width: 1500px; margin: 0 auto; align-items: start; }
+  @media (max-width: 860px) { .work { grid-template-columns: 1fr; padding: 12px; } .setlist { position: static !important; } #list { max-height: 220px; } }
+
+  /* setlist (paper) */
+  .setlist { background: var(--paper); color: var(--ink); border-radius: 6px; position: sticky; top: 64px; overflow: hidden; box-shadow: 0 6px 18px #0006; }
+  .setlist h2 { margin: 0; padding: 12px 14px 4px; font: 700 15px var(--hw); }
+  .setlist input { width: calc(100% - 20px); margin: 6px 10px 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; font: inherit; color: var(--ink); }
+  #list { overflow: auto; max-height: calc(100vh - 190px); border-top: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; align-items: center; padding: 6px 12px; cursor: pointer; border-bottom: 1px solid #0000000d; }
+  .row:hover { background: var(--paper-2); }
+  .row.sel { background: #fff; box-shadow: inset 4px 0 0 var(--ink); font-weight: 600; }
+  .row .n { width: 28px; color: var(--mute); font: 12px var(--hw); font-variant-numeric: tabular-nums; }
+  .row .led { width: 8px; height: 8px; border-radius: 50%; background: transparent; flex: none; }
+  .row.act .led { background: var(--led); box-shadow: 0 0 6px 1px #ff3b2faa; }
+
+  /* editor column */
+  #editor { min-width: 0; }
+  .empty { text-align: center; color: #9aa4ab; padding: 90px 16px; }
+  .empty b { display: block; color: #e8ecef; font: 700 18px var(--hw); margin-bottom: 6px; }
+  .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: var(--steel); border-radius: 6px; margin-bottom: 14px; box-shadow: 0 4px 12px #0005; position: sticky; top: 56px; z-index: 10; }
+  .bar .slot-no { font: 700 13px var(--hw); color: #8f99a1; }
+  .bar input[type=text] { padding: 6px 10px; border: 1px solid #00000066; border-radius: 4px; background: #101417; color: #ffd9a0; font: 700 17px var(--hw); letter-spacing: .08em; width: 220px; }
+  .bar label { display: flex; gap: 6px; align-items: center; color: #c9d0d5; font-size: 12px; }
+  .dirty { color: var(--amber); font-size: 12px; font-weight: 700; }
+
+  /* tone request */
+  .tone { background: var(--paper); color: var(--ink); border-radius: 6px; padding: 12px 14px; margin-bottom: 18px; box-shadow: 0 4px 14px #0005; }
+  .tone .trow { display: flex; gap: 12px; flex-wrap: wrap; }
+  .tone textarea { flex: 1 1 340px; min-height: 66px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  .tone .side { display: flex; flex-direction: column; gap: 6px; flex: 0 0 210px; }
+  .tone select, .tone input[type=text] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; width: 100%; }
+  .tone .note { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--mute); }
+  .tone .reply { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--amber); padding: 8px 10px; border-radius: 4px; color: var(--ink); font-size: 13px; }
+  .tone .btn { color: var(--ink); background: var(--paper-2); border-color: var(--line); box-shadow: none; }
+  .tone .btn.go { background: var(--amber); border-color: #8a6516; }
+
+  /* pedalboard */
+  .board { display: flex; flex-wrap: wrap; gap: 40px var(--gap); padding: 34px 30px 40px; border-radius: 8px; background-color: #272d33;
+           background-image: radial-gradient(circle at center, var(--hole) 0 2.4px, transparent 3px); background-size: 24px 24px;
+           box-shadow: inset 0 0 0 3px #3b444c, inset 0 0 60px #0008, 0 10px 30px #0007; }
+  .slot { position: relative; width: var(--u); flex: none; }
+  .slot.w2 { width: calc(var(--u) * 2 + var(--gap)); }
+  @media (max-width: 560px) { .slot, .slot.w2 { width: 100%; } .board { padding: 20px 12px; } }
+  .slot:not(.eol)::after { content: ""; position: absolute; left: 100%; top: 168px; width: var(--gap); height: 7px; margin-top: -3px; background: #0d0f11;
+                           border-radius: 4px; box-shadow: 0 1px 0 #ffffff14, 0 3px 4px #0008; z-index: 2; }
+  .slot.term { width: 54px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 140px; color: #8f99a1; font: 700 12px var(--hw); gap: 4px; }
+  .slot.term .plug { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #cfd4d8, #7b838a 60%, #4b5258); box-shadow: 0 2px 4px #000a; }
+  .unit { position: relative; box-shadow: 0 10px 18px #000a, 0 2px 3px #000c; }
+  .unit::before, .unit::after { content: ""; position: absolute; top: 160px; width: 8px; height: 16px; background: linear-gradient(90deg, #9aa1a7, #d4d8db, #878e94); border-radius: 2px; z-index: 3; }
+  .unit::before { left: -6px; } .unit::after { right: -6px; }
+
+  .unit { user-select: none; -webkit-user-select: none; }
+  .mv { display: flex; justify-content: space-between; align-items: center; font: 700 11px var(--hw); color: var(--on, #fff); opacity: .85; }
+  .mv button { background: none; border: 0; padding: 2px 7px; cursor: pointer; color: inherit; border-radius: 3px; font-size: 12px; }
+  .mv button:hover:not(:disabled) { background: #0003; } .mv button:disabled { opacity: .25; cursor: default; }
+  .plate { display: block; width: 100%; padding: 4px 6px; border: 1px solid #0006; border-radius: 3px; background: #101316; color: #f2d9a8; font: 600 12px var(--hw); text-overflow: ellipsis; box-shadow: inset 0 1px 3px #000a; }
+  select.plate option { background: #101316; color: #f2d9a8; }
+  select.plate { appearance: none; -webkit-appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, #f2d9a8 50%), linear-gradient(135deg, #f2d9a8 50%, transparent 50%);
+                 background-position: calc(100% - 13px) 55%, calc(100% - 9px) 55%; background-size: 4px 4px; background-repeat: no-repeat; padding-right: 20px; }
+  input.plate[type=number] { width: 70px; text-align: center; }
+
+  /* stompbox */
+  .pedal { height: 330px; border-radius: 10px 10px 12px 12px; padding: 8px 10px 12px; background: linear-gradient(180deg, color-mix(in srgb, var(--body) 86%, #fff) 0, var(--body) 12%, color-mix(in srgb, var(--body) 90%, #000) 100%);
+           color: var(--on, #fff); display: flex; flex-direction: column; gap: 7px;
+           box-shadow: inset 0 1px 0 #ffffff55, inset 0 -3px 0 #00000040, inset 0 0 0 1px #00000030, 0 10px 18px #000a, 0 2px 3px #000c; transition: filter .15s; }
+  .pedal.off { filter: saturate(.55) brightness(.82); }
+  .pedal .knobs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 2px; margin-top: 2px; }
+  .pedal .knobs.three { grid-template-columns: repeat(3, 1fr); }
+  .pedal .name { margin-top: auto; text-align: center; font: 700 17px/1 var(--hw); letter-spacing: .04em; }
+  .pedal .foot { display: flex; align-items: center; justify-content: center; gap: 14px; height: 56px; }
+  .led { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #4a1411; box-shadow: inset 0 1px 2px #000a, 0 0 0 2px #0005; }
+  .on .led, .led.lit { background: #ff5a4d; box-shadow: 0 0 10px 3px #ff3b2fbb, inset 0 0 3px #ffd0cb, 0 0 0 2px #0005; }
+  .fsw { width: 46px; height: 46px; border-radius: 50%; border: 0; cursor: pointer; background: radial-gradient(circle at 36% 30%, #eef1f3, #a7aeb4 55%, #6b7379);
+         box-shadow: 0 4px 0 #3c4247, 0 6px 8px #000a, inset 0 1px 1px #fff; transition: transform .05s, box-shadow .05s; }
+  .fsw[aria-pressed="true"] { transform: translateY(3px); box-shadow: 0 1px 0 #3c4247, 0 2px 4px #000a, inset 0 1px 1px #fff; }
+
+  /* knob */
+  .knob { display: flex; flex-direction: column; align-items: center; min-width: 0; --ptr: #fff; user-select: none; -webkit-user-select: none; }
+  .kn-dial { width: 52px; height: 52px; cursor: ns-resize; touch-action: none; border-radius: 50%; }
+  .kn-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .kn-tick { stroke: currentColor; stroke-width: 1.3; opacity: .5; }
+  .kn-shadow { fill: #0007; } .kn-skirt { fill: url(#g-skirt); stroke: #000a; stroke-width: .6; }
+  .kn-knurl { fill: none; stroke: #ffffff2e; stroke-width: 3; stroke-dasharray: .9 2.1; } .kn-cap { fill: url(#g-cap); stroke: #0008; stroke-width: .5; }
+  .kn-shine { fill: #fff; opacity: .16; } .kn-ptr rect { fill: var(--ptr); }
+  .knob.k-amp .kn-skirt { fill: url(#g-chrome); } .knob.k-amp { --ptr: #f5f1e6; color: #20262b; }
+  .cab .knob.k-amp { color: #e9edf0; }
+  .knob.dim { opacity: .38; }
+  .kn-lab { margin-top: 3px; font: 600 11px/1.1 var(--hw); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: .02em; }
+  .kn-lab.guess { font-style: italic; opacity: .8; }
+  .kn-val { background: none; border: 0; padding: 0 3px; color: inherit; opacity: .7; font: 11px var(--hw); font-variant-numeric: tabular-nums; cursor: text; min-width: 24px; border-radius: 3px; }
+  .kn-val:hover { opacity: 1; background: #0003; }
+  .kn-in { width: 46px; font: 11px var(--hw); text-align: center; border: 1px solid #0007; border-radius: 3px; background: #fff; color: #111; padding: 0; }
+  .knob.drag .kn-val { opacity: 1; background: #000a; color: #fff; }
+
+  /* amp head */
+  .amp { height: 330px; border-radius: 8px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; color: #15191c;
+         background-color: #17191b; background-image: radial-gradient(#ffffff0f 1px, transparent 1.2px), radial-gradient(#00000055 1px, transparent 1.2px); background-size: 5px 5px, 5px 5px; background-position: 0 0, 2px 2px;
+         box-shadow: inset 0 0 0 2px #000, inset 0 0 0 4px #2a2d30, 0 10px 18px #000a, 0 2px 3px #000c; transition: filter .15s; }
+  .amp.off { filter: brightness(.8) saturate(.7); }
+  .amp .mv { color: #aeb5ba; }
+  .a-face { flex: 1; border-radius: 4px; padding: 10px 12px 8px; display: flex; flex-direction: column; justify-content: space-between;
+            background: repeating-linear-gradient(90deg, #ffffff22 0 1px, #00000010 1px 2px), linear-gradient(180deg, #e4e6e8, #b4b9bd 55%, #9ea4a9);
+            box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 #0004, 0 2px 4px #000a; }
+  .a-head { display: flex; align-items: center; gap: 10px; }
+  .a-head .plate { flex: 1; background: linear-gradient(180deg, #c7a45a, #8f7236); color: #1e1707; border-color: #5d4a1c; box-shadow: inset 0 1px 0 #f3de9d, 0 1px 2px #0006; text-shadow: 0 1px 0 #ffffff55; font-size: 13px; }
+  .a-head select.plate { background: linear-gradient(45deg, transparent 50%, #1e1707 50%) calc(100% - 13px) 55% / 4px 4px no-repeat,
+                                      linear-gradient(135deg, #1e1707 50%, transparent 50%) calc(100% - 9px) 55% / 4px 4px no-repeat,
+                                      linear-gradient(180deg, #c7a45a, #8f7236); }
+  .a-head select.plate option { background: #f3e7c4; color: #1e1707; }
+  .jewel { width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #5a1a16, #2a0a08); box-shadow: 0 0 0 3px #666, inset 0 1px 2px #000; }
+  .on .jewel { background: radial-gradient(circle at 35% 30%, #ffd2c8, #ff3b2f 55%, #a01710); box-shadow: 0 0 0 3px #666, 0 0 12px 3px #ff3b2fbb; }
+  .toggle { width: 34px; height: 18px; border-radius: 9px; border: 0; cursor: pointer; background: #31373c; position: relative; box-shadow: inset 0 1px 3px #000, 0 1px 0 #fff8; flex: none; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #9aa1a7); transition: transform .08s; }
+  .toggle[aria-pressed="true"]::after { transform: translateX(16px); }
+  .a-knobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(54px, 1fr)); gap: 8px 0; }
+  .a-foot { text-align: center; font: 700 12px var(--hw); color: #3a4147; letter-spacing: .12em; }
+
+  /* cabinet */
+  .cab { height: 330px; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #1b1d1f; color: #e9edf0; transition: filter .15s;
+         box-shadow: inset 0 0 0 2px #000, inset 0 0 0 4px #303437, 0 10px 18px #000a, 0 2px 3px #000c; }
+  .cab.off { filter: brightness(.78) saturate(.7); }
+  .cab .mv { color: #aeb5ba; }
+  .c-top { display: flex; flex-direction: column; gap: 8px; }
+  .c-top .row2 { display: flex; gap: 10px; align-items: center; }
+  .c-top .plate { flex: 1; }
+  .c-top .knobs { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .c-grille { flex: 1; border-radius: 3px; position: relative; overflow: hidden; border: 3px solid #cbc3ad;
+              background: repeating-linear-gradient(45deg, #ffffff10 0 1px, transparent 1px 3px), repeating-linear-gradient(-45deg, #00000030 0 1px, transparent 1px 3px), #34373a;
+              box-shadow: inset 0 3px 10px #000c; }
+  .c-grille svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .c-tag { position: absolute; right: 8px; bottom: 6px; background: linear-gradient(180deg, #c7a45a, #8f7236); color: #1e1707; font: 700 10px var(--hw); padding: 1px 6px; border-radius: 2px; letter-spacing: .08em; }
+
+  /* graphic EQ */
+  .eq-box { display: flex; justify-content: space-around; align-items: stretch; flex: 1; padding: 4px 0 0; }
+  .band { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 24px; font: 600 10px var(--hw); }
+  .band > span:last-child { writing-mode: vertical-rl; transform: rotate(180deg); height: 40px; white-space: nowrap; font-size: 10px; text-align: left; }
+  .fader { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 140px; margin: 0; accent-color: #20262b; cursor: pointer; }
+  .band .val { font: 10px var(--hw); opacity: .75; }
+  .lcd { width: 62px; text-align: center; background: #1b2a1b; color: #9dff8a; border: 1px solid #000; border-radius: 3px; font: 700 13px "Cascadia Mono", Consolas, monospace; padding: 2px 3px; box-shadow: inset 0 1px 3px #000; }
+  .lcd-wrap { display: flex; align-items: center; gap: 5px; justify-content: center; font: 600 10px var(--hw); }
+
+  /* panels, dialogs, notes */
+  .panel { background: var(--paper); color: var(--ink); border-radius: 6px; padding: 16px 18px; box-shadow: 0 6px 18px #0006; }
+  .panel h2 { margin: 0 0 4px; font: 700 18px var(--hw); }
+  .note { color: var(--mute); font-size: 12px; margin-top: 12px; }
+  .footnote { color: #8f99a1; font-size: 12px; margin: 14px 2px 0; max-width: 90ch; }
+  .namgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+  .namgrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--mute); }
+  .namgrid select, .namgrid input { padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  .bar2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .panel .btn { color: var(--ink); background: var(--paper-2); border-color: var(--line); box-shadow: none; }
+  .panel .btn.go { background: var(--amber); border-color: #8a6516; }
+  dialog { border: 0; border-radius: 8px; background: var(--paper); color: var(--ink); width: min(620px, 94vw); padding: 18px 20px; box-shadow: 0 24px 70px #000b; max-height: 90vh; overflow: auto; }
+  dialog::backdrop { background: #000a; }
+  dialog h2 { margin: 0 0 4px; font: 700 18px var(--hw); }
+  dialog label { display: block; font-size: 12px; color: var(--mute); margin-top: 10px; }
+  dialog input, dialog textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; }
+  dialog fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 12px 0 0; padding: 4px 12px 12px; }
+  dialog legend { font-weight: 700; padding: 0 6px; font-family: var(--hw); }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  dialog .btn { color: var(--ink); background: var(--paper-2); border-color: var(--line); box-shadow: none; }
+  dialog .btn.go { background: var(--amber); border-color: #8a6516; }
+  .state { float: right; font: 600 12px var(--hw); padding: 1px 8px; border-radius: 10px; margin-top: -2px; }
+  .state.ok { background: #d6efdf; color: var(--good); } .state.no { background: #ece6d2; color: #6b5a1b; }
+  #status { position: fixed; bottom: 16px; left: 50%; transform: translate(-50%, 8px); background: #fff; color: var(--ink); padding: 9px 16px; border-radius: 6px; opacity: 0;
+            transition: opacity .15s, transform .15s; pointer-events: none; max-width: 90vw; box-shadow: 0 8px 30px #000a; z-index: 40; border-left: 4px solid var(--good); }
+  #status.show { opacity: 1; transform: translate(-50%, 0); } #status.err { border-left-color: var(--bad); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
 </head>
 <body>
-<header>
-  <h1>GE200 editor</h1>
-  <nav class="tabs"><button id="tab-presets" class="on">Device presets</button><button id="tab-nam">NAM lab</button></nav>
-  <span class="meta" id="meta">connecting...</span>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <radialGradient id="g-skirt" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#555b61"/><stop offset=".6" stop-color="#24282c"/><stop offset="1" stop-color="#0d0f11"/></radialGradient>
+  <radialGradient id="g-cap" cx="38%" cy="30%" r="85%"><stop offset="0" stop-color="#3b4147"/><stop offset="1" stop-color="#14171a"/></radialGradient>
+  <radialGradient id="g-chrome" cx="38%" cy="30%" r="85%"><stop offset="0" stop-color="#f2f4f5"/><stop offset=".55" stop-color="#a5acb2"/><stop offset="1" stop-color="#5b6268"/></radialGradient>
+</defs></svg>
+<header class="top">
+  <div class="brand">GE200</div>
+  <nav class="tabs"><button id="tab-presets" class="on">Presets</button><button id="tab-nam">NAM lab</button></nav>
+  <dl class="stat" id="meta"><div><dt>Status</dt><dd>connecting</dd></div></dl>
   <span class="spacer"></span>
-  <button id="rig" title="Your guitar, pickups and taste: used by the tone generator">My rig</button>
-  <button id="refresh" title="Read everything from the device again">Refresh</button>
-  <button id="backup" title="Save a full JSON backup now">Backup now</button>
+  <button class="btn" id="rig" title="Your guitars, pickups and taste: used by the tone generator">My rig</button>
+  <button class="btn" id="aisetup" title="Connect an AI provider for the tone generator">AI setup</button>
+  <button class="btn" id="refresh" title="Read everything from the device again">Refresh</button>
+  <button class="btn" id="backup" title="Save a full JSON backup now">Backup now</button>
 </header>
-<main>
-  <aside>
-    <input id="search" placeholder="Search presets" autocomplete="off">
+<main class="work" id="presets">
+  <aside class="setlist">
+    <h2>Setlist</h2>
+    <input id="search" placeholder="Search presets" autocomplete="off" aria-label="Search presets">
     <div id="list"></div>
   </aside>
-  <section id="editor"><div class="empty"><b>Pick a preset on the left</b>It is selected on the device and loaded here. Nothing is written until you press Save.</div></section>
+  <section id="editor"><div class="empty"><b>Pick a preset</b>It is selected on the unit and loaded here. Nothing is stored until you press Save.</div></section>
 </main>
-<main id="namlab" hidden style="display:block">
-  <section>
-    <h2 style="margin:0 0 4px;font-size:16px">NAM lab</h2>
-    <p class="note" style="margin-top:0">A second engine next to the GE200: render a DI recording through one of your NAM captures and a cabinet IR, and listen to the result. Rendering runs offline in a separate environment (about 10x faster than real time for a standard model). It does not touch the device.</p>
+<main class="work" id="namlab" hidden style="display:block">
+  <section class="panel">
+    <h2>NAM lab</h2>
+    <p class="note" style="margin-top:0">A second engine next to the GE200: run a DI recording through one of your NAM captures and a cabinet IR, then listen. Rendering is offline, in a separate environment (about 10x faster than real time for a standard model) and never touches the unit.</p>
     <div id="namstate" class="note"></div>
     <div class="namgrid">
       <label>NAM capture<select id="nam-model"></select></label>
@@ -117,30 +245,34 @@
       <label>DI recording<select id="nam-di"></select></label>
       <label>Input gain (dB)<input id="nam-gain" type="number" value="0" min="-40" max="40" step="1"></label>
     </div>
-    <div class="bar" style="margin-top:12px"><button id="nam-render" class="primary">Render</button><span id="nam-info" class="note" style="margin:0"></span></div>
-    <audio id="nam-audio" controls style="width:100%;margin-top:10px" hidden></audio>
+    <div class="bar2"><button id="nam-render" class="btn go">Render</button><span id="nam-info" class="note" style="margin:0"></span></div>
+    <audio id="nam-audio" controls style="width:100%;margin-top:12px" hidden></audio>
     <div id="nam-meta" class="note"></div>
   </section>
 </main>
 <dialog id="rigdlg"><form method="dialog" id="rigform">
-  <h2 style="margin:0 0 4px;font-size:16px">My rig</h2>
-  <div class="note" style="margin:0">Stored on this computer only (outside the repository). It is added to the tone generator's prompt, so what you write here is sent to the AI provider you pick (Claude, OpenAI, Gemini, OpenRouter or a local model) when you press Generate.</div>
+  <h2>My rig</h2>
+  <div class="note" style="margin:0">Stored on this computer only (outside the repository). It is added to the tone generator's prompt, so what you write here is sent to the AI provider you pick when you press Generate.</div>
   <div id="rigfields"></div>
-  <div class="actions"><button type="button" id="rigcancel">Cancel</button><button type="button" id="rigsave" class="primary">Save rig</button></div>
+  <div class="actions"><button type="button" class="btn" id="rigcancel">Cancel</button><button type="button" class="btn go" id="rigsave">Save rig</button></div>
 </form></dialog>
-<div id="status"></div>
+<dialog id="aidlg"><form method="dialog">
+  <h2>AI setup</h2>
+  <div class="note" style="margin:0">Connect any one provider. Keys are saved on this computer only (<span id="aipath"></span>), are never shown again and are only sent to that provider. A key set in the environment or <code>.env</code> takes precedence.</div>
+  <div id="aifields"></div>
+  <div class="actions"><button type="button" class="btn" id="aiclose">Close</button><button type="button" class="btn go" id="aisave">Save</button></div>
+</form></dialog>
+<div id="status" role="status"></div>
 <script>
 "use strict";
 const TOKEN = document.querySelector('meta[name="ge200-token"]').content;
 const MODULES = [
-  ["fx","FX / Wah / Comp"],["ds","Drive"],["amp","Amp"],["cab","Cab / IR"],["ns","Noise"],
-  ["eq","EQ"],["mod","Modulation"],["delay","Delay"],["reverb","Reverb"]];
-const MOD_LABEL = Object.fromEntries(MODULES);
-const MC = { fx:"#a855f7", ds:"#ef4444", amp:"#f59e0b", cab:"#78716c", ns:"#14b8a6", eq:"#3b82f6", mod:"#ec4899", delay:"#22c55e", reverb:"#6366f1" };
-const store = {
-  get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode: fine */ } },
-};
+  ["fx", "FX / Wah / Comp"], ["ds", "Drive"], ["amp", "Amp"], ["cab", "Cab / IR"], ["ns", "Noise gate"],
+  ["eq", "EQ"], ["mod", "Modulation"], ["delay", "Delay"], ["reverb", "Reverb"]];
+// pedal enclosure colour and the ink used on it
+const PEDAL = {
+  fx: ["#e3a33a", "#1a1204"], ds: ["#2f7a4b", "#ffffff"], ns: ["#9fb1bd", "#11181d"], eq: ["#ddc94a", "#1b1805"],
+  mod: ["#3f6fb8", "#ffffff"], delay: ["#247a80", "#ffffff"], reverb: ["#6b4f9a", "#ffffff"]};
 let S = null;            // server state
 let cur = null;          // {slot, stored, edit}
 let timer = null;
@@ -149,9 +281,14 @@ let timer = null;
 let epoch = Date.now();
 
 const $ = (s, r = document) => r.querySelector(s);
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode: fine */ } },
+};
 function toast(msg, err = false) {
-  const el = $("#status"); el.textContent = msg; el.className = "show" + (err ? " err" : "");
-  clearTimeout(toast.t); toast.t = setTimeout(() => el.className = "", err ? 5000 : 2200);
+  const t = $("#status"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "", err ? 5200 : 2400);
 }
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-GE200-Token": TOKEN }, body: JSON.stringify(body) };
@@ -160,7 +297,6 @@ async function api(path, body) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
-const clone = o => JSON.parse(JSON.stringify(o));
 function editFrom(p) {
   const modules = {};
   for (const [k, m] of Object.entries(p.modules)) modules[k] = { type: m.type, enabled: m.enabled, params: m.params.slice() };
@@ -168,20 +304,20 @@ function editFrom(p) {
 }
 const isDirty = () => cur && JSON.stringify(cur.edit) !== JSON.stringify(editFrom(cur.stored));
 
-async function loadState() {
-  S = await api("/api/state");
-  $("#meta").textContent = `firmware ${S.firmware || "?"} · ${S.presets.length} presets · active ${S.active}` + (S.backed_up ? " · backup saved" : "");
-  renderList();
+// ---------------------------------------------------------------- state, setlist
+function renderMeta(extra) {
+  const d = $("#meta"); d.textContent = "";
+  const items = extra ? [["Status", extra]] : [["Firmware", S.firmware || "?"], ["Presets", S.presets.length], ["Active", S.active], ["Backup", S.backed_up ? "saved" : "not yet"]];
+  for (const [k, v] of items) { const w = el("div"); w.append(el("dt", "", k), el("dd", "", String(v))); d.appendChild(w); }
 }
+async function loadState() { S = await api("/api/state"); renderMeta(); renderList(); }
 function renderList() {
   const q = $("#search").value.trim().toLowerCase();
   const box = $("#list"); box.textContent = "";
   for (const p of S.presets) {
     if (q && !(p.name.toLowerCase().includes(q) || String(p.index) === q)) continue;
-    const d = document.createElement("div");
-    d.className = "row" + (cur && cur.slot === p.index ? " sel" : "");
-    d.innerHTML = `<span class="n">${p.index}</span><span class="act">${p.index === S.active ? "●" : ""}</span><span></span>`;
-    d.lastChild.textContent = p.name || "(no name)";
+    const d = el("div", "row" + (cur && cur.slot === p.index ? " sel" : "") + (p.index === S.active ? " act" : ""));
+    d.append(el("span", "n", String(p.index)), el("span", "led"), el("span", "", p.name || "(no name)"));
     d.onclick = () => openPreset(p.index);
     box.appendChild(d);
   }
@@ -196,7 +332,7 @@ async function openPreset(slot) {
   try {
     const r = await api("/api/select", { slot, epoch: my });
     if (my !== epoch || r.dropped) return;
-    S.active = slot; $("#meta").textContent = $("#meta").textContent.replace(/active \d+/, "active " + slot); renderList();
+    S.active = slot; renderMeta(); renderList();
   } catch (e) { toast(e.message, true); }
 }
 function scheduleLive() {
@@ -206,15 +342,11 @@ function scheduleLive() {
   const my = epoch, slot = cur.slot;
   timer = setTimeout(async () => {
     if (my !== epoch) return;
-    try {
-      const r = await api("/api/live", { slot, edit: cur.edit, epoch: my });
-      if (r.error) toast("Device: " + r.error, true);
-    } catch (e) { toast(e.message, true); }
+    try { const r = await api("/api/live", { slot, edit: cur.edit, epoch: my }); if (r.error) toast("Unit: " + r.error, true); }
+    catch (e) { toast(e.message, true); }
   }, 150);
 }
-let toneText = "";
-let toneGuitar = "";
-let verifyTimer = null;
+let toneText = "", toneGuitar = "", verifyTimer = null;
 function pollVerify() {
   clearInterval(verifyTimer);
   verifyTimer = setInterval(async () => {
@@ -222,22 +354,222 @@ function pollVerify() {
       const s = await api("/api/status");
       if (s.verify.state === "pending") return;
       clearInterval(verifyTimer);
-      if (s.verify.state === "ok") toast(`Slot ${s.verify.slot} verified on the device`);
+      if (s.verify.state === "ok") toast(`Slot ${s.verify.slot} verified on the unit`);
       else toast(`Slot ${s.verify.slot}: read-back differs from what was saved!`, true);
     } catch (e) { clearInterval(verifyTimer); toast(e.message, true); }
   }, 1500);
 }
-function updateDirty() { const d = $("#dirty"); if (d) d.textContent = isDirty() ? "● unsaved changes" : ""; }
+function updateDirty() { const d = $("#dirty"); if (d) d.textContent = isDirty() ? "unsaved changes" : ""; }
 
+// ---------------------------------------------------------------- controls: knob, fader, model plate
+const TICKS = Array.from({ length: 11 }, (_, i) => -135 + 27 * i);
+function knobSvg() {
+  const ticks = TICKS.map(a => `<line x1="0" y1="-27" x2="0" y2="-30.5" transform="rotate(${a})" class="kn-tick"/>`).join("");
+  return `<svg viewBox="-32 -32 64 64" class="kn-svg" aria-hidden="true">${ticks}<circle r="23" cy="2" class="kn-shadow"/><circle r="22" class="kn-skirt"/>
+    <circle r="22" class="kn-knurl"/><circle r="16" class="kn-cap"/><ellipse cx="-4" cy="-8" rx="9" ry="5" class="kn-shine"/>
+    <g class="kn-ptr"><rect x="-1.5" y="-20.5" width="3" height="11" rx="1.3"/></g></svg>`;
+}
+// o: {max, value, rest, kind, onChange}. Drag up/right = more (Shift = fine), wheel and arrow keys step, double-click resets.
+function makeKnob(o) {
+  let max = o.max, v = o.value;
+  const root = el("div", "knob" + (o.kind ? " k-" + o.kind : "")), dial = el("div", "kn-dial"), lab = el("span", "kn-lab"), val = el("button", "kn-val");
+  dial.innerHTML = knobSvg(); dial.tabIndex = 0; dial.setAttribute("role", "slider"); dial.setAttribute("aria-valuemin", "0");
+  val.type = "button"; val.title = "Click to type a value";
+  root.append(dial, lab, val);
+  const ptr = dial.querySelector(".kn-ptr");
+  const paint = () => {
+    ptr.setAttribute("transform", `rotate(${-135 + 270 * (max ? Math.min(v, max) / max : 0)})`);
+    val.textContent = v; dial.setAttribute("aria-valuenow", v); dial.setAttribute("aria-valuemax", max);
+  };
+  const change = (x, grow) => {
+    x = Math.max(0, Math.min(grow ? 255 : max, Math.round(x)));
+    if (x > max) max = x;
+    if (x !== v) { v = x; paint(); o.onChange(v); } else paint();
+  };
+  dial.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0) return;
+    dial.setPointerCapture(ev.pointerId); dial.focus(); ev.preventDefault();
+    const y0 = ev.clientY, x0 = ev.clientX, v0 = v; root.classList.add("drag");
+    const mv = e2 => change(v0 + ((y0 - e2.clientY) + (e2.clientX - x0) * 0.5) / (e2.shiftKey ? 700 : 170) * max);
+    const up = () => { dial.removeEventListener("pointermove", mv); dial.removeEventListener("pointerup", up); dial.removeEventListener("pointercancel", up); root.classList.remove("drag"); };
+    dial.addEventListener("pointermove", mv); dial.addEventListener("pointerup", up); dial.addEventListener("pointercancel", up);
+  });
+  const step = Math.max(1, Math.round(max / 100));
+  dial.addEventListener("wheel", ev => { ev.preventDefault(); change(v + (ev.deltaY < 0 ? 1 : -1) * (ev.shiftKey ? 5 : 1) * step); }, { passive: false });
+  dial.addEventListener("keydown", ev => {
+    const k = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[ev.key];
+    if (k !== undefined) { ev.preventDefault(); change(v + k * step); }
+    else if (ev.key === "Home") { ev.preventDefault(); change(0); } else if (ev.key === "End") { ev.preventDefault(); change(max); }
+  });
+  dial.addEventListener("dblclick", () => change(o.rest));
+  val.onclick = () => {
+    const inp = el("input", "kn-in"); inp.type = "number"; inp.min = 0; inp.max = 255; inp.value = v;
+    val.replaceWith(inp); inp.focus(); inp.select();
+    const done = ok => { if (!inp.isConnected) return; if (ok) change(parseInt(inp.value, 10) || 0, true); inp.replaceWith(val); };
+    inp.onkeydown = ev => { if (ev.key === "Enter") done(true); else if (ev.key === "Escape") done(false); };
+    inp.onblur = () => done(true);
+  };
+  paint();
+  return { root, setLabel(text, guess, title, dim) {
+    lab.textContent = text; lab.classList.toggle("guess", !!guess); root.classList.toggle("dim", !!dim); root.title = title || "";
+  } };
+}
+// knob label for param i of module `key` with the model's current type: the device's own label, else our table
+function labelFor(key, m, i, rg) {
+  const ml = S.model_labels && S.model_labels[key] && S.model_labels[key][String(m.type)];
+  const pi = (S.params && S.params[key] && S.params[key][i]) || { label: "P" + (i + 1), confidence: "unknown", note: "" };
+  const fromDevice = ml && i < ml.length;
+  const lab = fromDevice ? (ml[i] || "(unused)") : pi.label;
+  const conf = fromDevice ? "high" : pi.confidence;
+  const guess = conf === "low" || conf === "unknown";
+  return { text: lab + (guess ? "?" : ""), guess, dim: lab === "(unused)",
+    title: `${lab} (${fromDevice ? "the unit's own label for this model" : "confidence: " + conf}${!fromDevice && pi.note ? "; " + pi.note : ""})\nrange seen in your presets: ${rg.params[i][0]} to ${rg.params[i][1]}\nDouble-click resets, Shift = fine, wheel or arrow keys step` };
+}
+function modelPlate(key, m, repaint) {
+  const tbl = S.names[key], rg = S.ranges[key];
+  let t;
+  if (tbl && tbl.length) {
+    t = el("select", "plate"); t.setAttribute("aria-label", "model");
+    const irs = key === "cab" ? (S.ir_names || []) : [];
+    tbl.forEach((n, i) => { const id = i + 1; const ir = irs[id - 27]; t.add(new Option(`${id}  ${ir ? ir + "  (your IR)" : n}`, id)); });
+    if (m.type > tbl.length) t.add(new Option(`${m.type}  (unknown)`, m.type));
+    t.value = m.type;
+  } else {
+    t = el("input", "plate"); t.type = "number"; t.min = 1; t.max = Math.max(rg.type[1], m.type); t.value = m.type;
+  }
+  t.onchange = () => { m.type = parseInt(t.value, 10) || 1; repaint(); scheduleLive(); };
+  return t;
+}
+function chainControls(i) {
+  const e = cur.edit, w = el("div", "mv");
+  const l = el("button", "", "◀"), r = el("button", "", "▶");
+  l.title = "Move earlier in the signal chain"; r.title = "Move later in the signal chain"; l.disabled = i === 0; r.disabled = i === 8;
+  const mv = d => { [e.chain_order[i], e.chain_order[i + d]] = [e.chain_order[i + d], e.chain_order[i]]; drawBoard(); scheduleLive(); };
+  l.onclick = () => mv(-1); r.onclick = () => mv(1);
+  w.append(l, el("span", "", "Position " + (i + 1)), r);
+  return w;
+}
+// knobs for module `key`; returns {nodes, repaint}
+function moduleKnobs(key, m, kind) {
+  const rg = S.ranges[key], stored = cur.stored.modules[key].params, painters = [], nodes = [];
+  m.params.forEach((v, i) => {
+    const k = makeKnob({ max: Math.max(100, rg.params[i][1], v), value: v, rest: stored[i], kind, onChange: x => { m.params[i] = x; scheduleLive(); } });
+    const paint = () => { const L = labelFor(key, m, i, rg); k.setLabel(L.text, L.guess, L.title, L.dim); };
+    paint(); painters.push(paint); nodes.push(k.root);
+  });
+  return { nodes, repaint: () => painters.forEach(f => f()) };
+}
+function switchState(m, root, btns) {
+  const apply = () => { root.classList.toggle("on", m.enabled); root.classList.toggle("off", !m.enabled); btns.forEach(b => b.setAttribute("aria-pressed", m.enabled ? "true" : "false")); };
+  btns.forEach(b => b.onclick = () => { m.enabled = !m.enabled; apply(); scheduleLive(); });
+  apply();
+}
+const TITLES = Object.fromEntries(MODULES);
+
+// ---------------------------------------------------------------- module drawings
+function pedalView(key, i) {
+  const e = cur.edit, m = e.modules[key], [body, on] = PEDAL[key];
+  const root = el("div", "unit pedal"); root.style.setProperty("--body", body); root.style.setProperty("--on", on); root.style.color = on;
+  const sw = el("button", "fsw"); sw.type = "button"; sw.title = "Footswitch: effect on / off"; sw.setAttribute("aria-label", TITLES[key] + " on or off");
+  const body2 = el("div");
+  let repaint;
+  if (key === "eq") {                                   // graphic EQ: vertical faders
+    body2.className = "eq-box";
+    const rg = S.ranges[key], stored = cur.stored.modules[key].params, painters = [];
+    m.params.forEach((v, idx) => {
+      const b = el("div", "band"), f = el("input", "fader"), val = el("span", "val", String(v)), lab = el("span", "");
+      f.type = "range"; f.min = 0; f.max = Math.max(100, rg.params[idx][1], v); f.value = v; f.setAttribute("aria-label", "band " + (idx + 1));
+      f.oninput = () => { m.params[idx] = parseInt(f.value, 10); val.textContent = f.value; scheduleLive(); };
+      f.ondblclick = () => { f.value = stored[idx]; f.oninput(); };
+      const paint = () => { const L = labelFor(key, m, idx, rg); lab.textContent = L.text; lab.style.fontStyle = L.guess ? "italic" : "normal"; b.title = L.title; };
+      paint(); painters.push(paint); b.append(f, val, lab); body2.appendChild(b);
+    });
+    repaint = () => painters.forEach(f => f());
+  } else {
+    const kn = moduleKnobs(key, m, "");
+    body2.className = "knobs" + (m.params.length > 4 ? " three" : "");
+    kn.nodes.forEach(n => body2.appendChild(n));
+    repaint = kn.repaint;
+  }
+  const extra = [];
+  const wideKeys = { delay: ["delay_time", "delay_time_b"], eq: ["eq_freq_1", "eq_freq_2", "eq_freq_3"] }[key] || [];
+  wideKeys.forEach(wk => {
+    const info = (S.wide_info || {})[wk]; if (!info) return;
+    const w = el("label", "lcd-wrap"), inp = el("input", "lcd"); inp.type = "number"; inp.min = info.range[0]; inp.max = info.range[1]; inp.value = e.wide[wk];
+    inp.title = `${info.label}: ${info.unit}; ${info.applies}`;
+    inp.onchange = () => { const v = Math.max(info.range[0], Math.min(info.range[1], parseInt(inp.value, 10) || info.range[0])); e.wide[wk] = v; inp.value = v; scheduleLive(); };
+    w.append(el("span", "", info.label), inp, el("span", "", info.unit)); extra.push(w);
+    const show = () => { w.hidden = (wk === "delay_time_b" && m.type !== 9) || (wk.startsWith("eq_freq") && m.type !== 4); };
+    show(); const prev = repaint; repaint = () => { prev(); show(); };
+  });
+  const plate = modelPlate(key, m, () => repaint());
+  const foot = el("div", "foot"); foot.append(el("span", "led"), sw);
+  root.append(chainControls(i), plate, body2, ...extra, el("div", "name", TITLES[key]), foot);
+  switchState(m, root, [sw]);
+  repaint();
+  return root;
+}
+function ampView(i) {
+  const m = cur.edit.modules.amp;
+  const root = el("div", "unit amp");
+  const kn = moduleKnobs("amp", m, "amp");
+  const face = el("div", "a-face"), head = el("div", "a-head"), tg = el("button", "toggle");
+  tg.type = "button"; tg.title = "Amp on / off"; tg.setAttribute("aria-label", "Amp on or off");
+  head.append(modelPlate("amp", m, () => kn.repaint()), el("span", "jewel"), tg);
+  const knobs = el("div", "a-knobs"); kn.nodes.forEach(n => knobs.appendChild(n));
+  face.append(head, knobs, el("div", "a-foot", "AMP"));
+  root.append(chainControls(i), face);
+  switchState(m, root, [tg]);
+  kn.repaint();
+  return root;
+}
+function cabView(i) {
+  const m = cur.edit.modules.cab;
+  const root = el("div", "unit cab");
+  const kn = moduleKnobs("cab", m, "amp");
+  const tg = el("button", "toggle"); tg.type = "button"; tg.title = "Cabinet / IR on / off"; tg.setAttribute("aria-label", "Cabinet on or off");
+  const top = el("div", "c-top"), r2 = el("div", "row2"), knobs = el("div", "knobs");
+  r2.append(modelPlate("cab", m, () => kn.repaint()), tg);
+  kn.nodes.forEach(n => knobs.appendChild(n));
+  top.append(r2, knobs);
+  const grille = el("div", "c-grille");
+  grille.innerHTML = `<svg viewBox="0 0 300 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g fill="none" stroke="#ffffff" stroke-opacity=".08"><circle cx="82" cy="60" r="50"/><circle cx="82" cy="60" r="38"/><circle cx="82" cy="60" r="26"/><circle cx="218" cy="60" r="50"/><circle cx="218" cy="60" r="38"/><circle cx="218" cy="60" r="26"/></g>
+    <g fill="#000" fill-opacity=".28"><circle cx="82" cy="60" r="11"/><circle cx="218" cy="60" r="11"/></g></svg><span class="c-tag">2x12</span>`;
+  root.append(chainControls(i), top, grille);
+  switchState(m, root, [tg]);
+  kn.repaint();
+  return root;
+}
+function drawBoard() {
+  const board = $("#board"); if (!board) return;
+  board.textContent = "";
+  const term = t => { const s = el("div", "slot term"); s.append(el("span", "plug"), el("span", "", t)); return s; };
+  board.appendChild(term("In"));
+  cur.edit.chain_order.forEach((id, i) => {
+    const key = MODULES[id - 1][0];
+    const slot = el("div", "slot" + (key === "amp" || key === "cab" ? " w2" : ""));
+    slot.appendChild(key === "amp" ? ampView(i) : key === "cab" ? cabView(i) : pedalView(key, i));
+    board.appendChild(slot);
+  });
+  board.appendChild(term("Out"));
+  layoutCables();
+}
+// a patch cable runs to the next module only when that module sits on the same row
+function layoutCables() {
+  const slots = [...document.querySelectorAll("#board .slot")];
+  slots.forEach((s, i) => s.classList.toggle("eol", i === slots.length - 1 || slots[i + 1].offsetTop !== s.offsetTop));
+}
+window.addEventListener("resize", () => layoutCables());
+
+// ---------------------------------------------------------------- editor
 function renderEditor() {
   const ed = $("#editor"); ed.textContent = "";
   const e = cur.edit;
-  const bar = document.createElement("div"); bar.className = "bar";
-  bar.innerHTML = `<span style="color:var(--mute)">#${cur.slot}</span>
-    <input type="text" id="name" maxlength="16" spellcheck="false">
-    <label class="inl"><input type="checkbox" id="audition" checked> live audition</label>
-    <span class="dirty" id="dirty"></span><span style="flex:1"></span>
-    <button id="revert">Revert</button><button id="save" class="primary" title="Ctrl+S">Save to slot ${cur.slot}</button>`;
+  const bar = el("div", "bar");
+  bar.innerHTML = `<span class="slot-no">#${cur.slot}</span><input type="text" id="name" maxlength="16" spellcheck="false" aria-label="Preset name">
+    <label><input type="checkbox" id="audition" checked> Live audition</label><span class="dirty" id="dirty"></span><span class="spacer"></span>
+    <button class="btn" id="revert">Revert</button><button class="btn go" id="save" title="Ctrl+S">Save to slot ${cur.slot}</button>`;
   ed.appendChild(bar);
   $("#name").value = e.name;
   $("#name").oninput = ev => { e.name = ev.target.value; scheduleLive(); };
@@ -247,7 +579,7 @@ function renderEditor() {
     try { await api("/api/revert", { slot: cur.slot, epoch: my }); toast("Reverted to the stored preset"); } catch (err) { toast(err.message, true); }
   };
   $("#save").onclick = async () => {
-    if (!confirm(`Overwrite slot ${cur.slot} on the device?` + (S.backed_up ? "" : "\n\nA full backup is saved first."))) return;
+    if (!confirm(`Overwrite slot ${cur.slot} on the unit?` + (S.backed_up ? "" : "\n\nA full backup is saved first."))) return;
     clearTimeout(timer);
     try {
       const r = await api("/api/save", { slot: cur.slot, edit: cur.edit });
@@ -255,40 +587,52 @@ function renderEditor() {
       await loadState(); renderEditor();
       if (r.unchanged) toast("Nothing to save: identical to what is stored (nothing was written)");
       else if (r.ok === null && r.pending) { toast("Saved. Verifying..."); pollVerify(); }
-      else if (r.ok === null) toast("Saved to slot " + cur.slot + ". (Press Refresh to re-read the whole device and verify.)");
-      else toast(r.ok ? "Saved and verified on the device" : "Saved, but read-back differs!", !r.ok);
+      else if (r.ok === null) toast("Saved to slot " + cur.slot + ". (Press Refresh to re-read the unit and verify.)");
+      else toast(r.ok ? "Saved and verified on the unit" : "Saved, but read-back differs!", !r.ok);
     } catch (err) { toast(err.message, true); }
   };
-  // tone generator (LLM): any provider the server has credentials for
-  const tg = document.createElement("div"); tg.className = "tone";
-  const T = S.tone || {}, provs = T.providers || [];
-  tg.innerHTML = `<div class="trow"><textarea id="desc" rows="2" maxlength="1000" placeholder="Describe a tone, e.g. 'dreamy clean with a long shimmery reverb and a touch of chorus'"></textarea>
-    <div class="side"><select id="tguitar" title="Which guitar you will play this with"></select>
-    <select id="tprov" title="Which AI writes the preset" ${provs.length ? "" : "hidden"}></select>
-    <input id="tmodel" type="text" maxlength="100" spellcheck="false" ${provs.length ? "" : "hidden"} title="Model name of the chosen provider">
-    <button id="gen" class="primary">Generate</button></div></div>
-    <div class="note" id="tnote"></div>`;
-  ed.appendChild(tg);
-  const gs = $("#tguitar"); gs.add(new Option("(any guitar)", ""));
+  ed.appendChild(toneView());
+  const board = el("div", "board"); board.id = "board"; ed.appendChild(board);
+  drawBoard();
+  ed.appendChild(el("p", "footnote", "Modules sit in signal-chain order, left to right: use the arrows on a module to move it. Drag a knob up or right for more (Shift = fine), use the wheel or arrow keys to step, double-click to return to the saved value, click the number to type one. An italic name ending in ? is a guess. Live audition changes the unit's working copy only; nothing is stored until you press Save."));
+  updateDirty();
+}
+
+// ---------------------------------------------------------------- tone request
+function readyProviders() { return ((S.tone && S.tone.providers) || []).filter(p => p.available); }
+function toneView() {
+  const tg = el("div", "tone");
+  const T = S.tone || {}, provs = readyProviders(), injected = T.available && !(T.providers || []).length;
+  tg.innerHTML = `<div class="trow"><textarea id="desc" rows="2" maxlength="1000" placeholder="Describe the tone, e.g. 'dreamy clean with a long shimmery reverb and a touch of chorus'" aria-label="Tone description"></textarea>
+    <div class="side"><select id="tguitar" aria-label="Guitar"></select>
+    <select id="tprov" aria-label="AI provider" hidden></select><input id="tmodel" type="text" maxlength="100" spellcheck="false" aria-label="Model name" hidden>
+    <button class="btn go" id="gen"></button></div></div><div class="note" id="tnote"></div>`;
+  const gs = $("#tguitar", tg); gs.add(new Option("Any guitar", ""));
   ((S.rig && S.rig.guitars) || []).forEach((g, i) => gs.add(new Option(g.name || "Guitar " + (i + 1), i)));
   gs.value = toneGuitar; gs.onchange = () => { toneGuitar = gs.value; };
-  $("#desc").value = toneText;
-  $("#desc").oninput = ev => { toneText = ev.target.value; };
-  const pv = $("#tprov"), md = $("#tmodel"), gen = $("#gen");
-  const provInfo = () => provs.find(x => x.id === pv.value);
-  const refreshTone = () => {
-    const pi = provInfo(); const note = $("#tnote");
-    if (pi) { const stored = store.get("ge200.model." + pi.id); md.value = stored || pi.default_model || ""; md.placeholder = pi.default_model ? "model (default " + pi.default_model + ")" : "model name"; }
-    const usable = provs.length ? !!(pi && pi.available) : !!T.available;
-    gen.disabled = !usable;
-    if (!note.dataset.result) note.textContent = !T.available ? "Tone generator unavailable: " + (T.reason || "no provider configured")
-      : (pi && pi.reason ? pi.label + ": " + pi.reason : (pi && pi.id === "local" ? "Runs on your own server: your presets never leave this machine." : ""));
+  const desc = $("#desc", tg); desc.value = toneText; desc.oninput = () => { toneText = desc.value; };
+  const pv = $("#tprov", tg), md = $("#tmodel", tg), gen = $("#gen", tg), note = $("#tnote", tg);
+  if (!provs.length && !injected) {                       // nothing connected yet: offer the setup instead of a dead button
+    gen.textContent = "Connect an AI provider"; gen.onclick = openAiSetup;
+    note.textContent = "The tone generator needs one AI provider (Claude, OpenAI, Gemini, OpenRouter or a model on your own machine).";
+    return tg;
+  }
+  gen.textContent = "Generate";
+  const info = () => provs.find(x => x.id === pv.value);
+  const showInfo = () => {
+    const pi = info(); if (!pi) return;
+    const saved = store.get("ge200.model." + pi.id); md.value = saved || pi.default_model || "";
+    md.placeholder = pi.default_model ? "model (default " + pi.default_model + ")" : "model name";
+    if (!note.dataset.result) note.textContent = pi.reason ? pi.label + ": " + pi.reason : (pi.id === "local" ? "Runs on your own server: your presets stay on this machine." : "");
   };
-  provs.forEach(x => pv.add(new Option(x.label + (x.available ? "" : "  (not set up)"), x.id)));
-  pv.value = (provs.find(x => x.id === store.get("ge200.provider")) || provs.find(x => x.id === T.default) || provs[0] || {}).id || "";
-  pv.onchange = () => { store.set("ge200.provider", pv.value); $("#tnote").dataset.result = ""; refreshTone(); };
-  md.onchange = () => { if (pv.value) store.set("ge200.model." + pv.value, md.value.trim()); };
-  refreshTone();
+  if (provs.length) {
+    pv.hidden = md.hidden = false;
+    provs.forEach(x => pv.add(new Option(x.label, x.id)));
+    pv.value = (provs.find(x => x.id === store.get("ge200.provider")) || provs.find(x => x.id === T.default) || provs[0]).id;
+    pv.onchange = () => { store.set("ge200.provider", pv.value); note.dataset.result = ""; showInfo(); };
+    md.onchange = () => { store.set("ge200.model." + pv.value, md.value.trim()); };
+    showInfo();
+  }
   gen.onclick = async () => {
     const text = toneText.trim(); if (!text) { toast("Describe the tone first", true); return; }
     gen.disabled = true; gen.textContent = "Generating...";
@@ -297,107 +641,67 @@ function renderEditor() {
       if (provs.length && pv.value) { body.provider = pv.value; const m = md.value.trim(); if (m) body.model = m; }
       const r = await api("/api/tone", body);
       cur.edit = r.edit; renderEditor();
-      const note = $("#tnote"); note.dataset.result = "1"; note.innerHTML = "";
-      const n = document.createElement("div"); n.className = "notes-box"; n.textContent = r.notes || "Done.";
-      const warn = document.createElement("div"); warn.style.color = "var(--accent)";
-      warn.textContent = "Loaded into the editor, not sent to the device yet. Turn your volume down first: levels were not tested.";
-      const au = document.createElement("button"); au.textContent = "Audition now"; au.onclick = async () => {
-        try { await api("/api/live", { slot: cur.slot, edit: cur.edit, epoch }); toast("Sent to the device (working copy only)"); } catch (e) { toast(e.message, true); } };
-      note.append(n, warn, au);
-    } catch (e) { toast(e.message, true); gen.disabled = false; gen.textContent = "Generate"; }
+      const n2 = $("#tnote"); n2.dataset.result = "1"; n2.textContent = "";
+      const warn = el("div", "", "Loaded into the editor, not sent to the unit yet. Turn your volume down first: levels were not tested.");
+      const au = el("button", "btn", "Audition now");
+      au.onclick = async () => { try { await api("/api/live", { slot: cur.slot, edit: cur.edit, epoch }); toast("Sent to the unit (working copy only)"); } catch (er) { toast(er.message, true); } };
+      n2.append(el("div", "reply", r.notes || "Done."), warn, au);
+    } catch (er) { toast(er.message, true); gen.disabled = false; gen.textContent = "Generate"; }
   };
-  // chain order
-  const chain = document.createElement("div"); chain.className = "chain"; ed.appendChild(chain);
-  const drawChain = () => {
-    chain.textContent = "";
-    e.chain_order.forEach((id, i) => {
-      const mk = MODULES[id - 1][0];
-      if (i) { const ar = document.createElement("span"); ar.className = "arrow"; ar.textContent = "→"; chain.appendChild(ar); }
-      const c = document.createElement("span"); c.className = "chip" + (e.modules[mk].enabled ? "" : " off");
-      c.style.setProperty("--mc", MC[mk]);
-      c.append(`${MODULES[id - 1][1]} `);
-      const l = document.createElement("button"); l.textContent = "◀"; l.disabled = i === 0;
-      const r = document.createElement("button"); r.textContent = "▶"; r.disabled = i === 8;
-      const mv = d => { [e.chain_order[i], e.chain_order[i + d]] = [e.chain_order[i + d], e.chain_order[i]]; drawChain(); scheduleLive(); };
-      l.onclick = () => mv(-1); r.onclick = () => mv(1);
-      c.append(l, r); chain.appendChild(c);
-    });
-  };
-  drawChain();
-  // modules
-  const cards = document.createElement("div"); cards.className = "cards"; ed.appendChild(cards);
-  for (const [key, label] of MODULES) {
-    const m = e.modules[key], rg = S.ranges[key], tbl = S.names[key];
-    const card = document.createElement("div"); card.className = "card" + (m.enabled ? "" : " off");
-    card.style.setProperty("--mc", MC[key]);
-    const h = document.createElement("h3");
-    const on = document.createElement("input"); on.type = "checkbox"; on.className = "sw"; on.checked = m.enabled; on.title = "on / off";
-    on.onchange = () => { m.enabled = on.checked; card.classList.toggle("off", !m.enabled); drawChain(); scheduleLive(); };
-    const ttl = document.createElement("span"); ttl.className = "ttl"; ttl.textContent = label;
-    h.append(on, ttl);
-    const sp = document.createElement("span"); sp.className = "sp"; h.appendChild(sp);
-    let typeEl;
-    if (tbl && tbl.length) {
-      typeEl = document.createElement("select");
-      tbl.forEach((n, i) => typeEl.add(new Option(`${i + 1}  ${n}`, i + 1)));
-      if (m.type > tbl.length) typeEl.add(new Option(`${m.type}  (unknown)`, m.type));
-      typeEl.value = m.type;
-    } else {
-      typeEl = document.createElement("input"); typeEl.type = "number"; typeEl.min = 1; typeEl.max = Math.max(rg.type[1], m.type); typeEl.value = m.type; typeEl.style.width = "60px";
-    }
-    typeEl.onchange = () => { m.type = parseInt(typeEl.value, 10) || 1; (card._labelPainters || []).forEach(f => f()); scheduleLive(); };
-    h.appendChild(typeEl); card.appendChild(h);
-    m.params.forEach((v, i) => {
-      const max = Math.max(100, rg.params[i][1], v);
-      const row = document.createElement("div"); row.className = "param";
-      const name = document.createElement("span");
-      const paintLabel = () => {
-        const ml = S.model_labels && S.model_labels[key] && S.model_labels[key][String(m.type)];
-        const pi = (S.params && S.params[key] && S.params[key][i]) || { label: "P" + (i + 1), confidence: "unknown", note: "" };
-        const fromDevice = ml && i < ml.length;
-        const lab = fromDevice ? (ml[i] || "(unused)") : pi.label;
-        const conf = fromDevice ? "high" : pi.confidence;
-        name.textContent = lab + (conf === "low" || conf === "unknown" ? "?" : "");
-        name.style.fontStyle = conf === "low" || conf === "unknown" ? "italic" : "normal";
-        name.style.opacity = lab === "(unused)" ? 0.5 : 1;
-        name.title = `${lab} (${fromDevice ? "device's own label for this model" : "confidence: " + conf}${!fromDevice && pi.note ? "; " + pi.note : ""})\nobserved range in your presets: ${rg.params[i][0]}–${rg.params[i][1]}`;
-      };
-      paintLabel(); card._labelPainters = (card._labelPainters || []).concat(paintLabel);
-      const sl = document.createElement("input"); sl.type = "range"; sl.min = 0; sl.max = max; sl.value = v;
-      const nm = document.createElement("input"); nm.type = "number"; nm.min = 0; nm.max = 255; nm.value = v;
-      const set = x => { x = Math.max(0, Math.min(255, parseInt(x, 10) || 0)); m.params[i] = x; sl.value = x; nm.value = x; scheduleLive(); };
-      sl.oninput = () => set(sl.value); nm.onchange = () => set(nm.value);
-      row.append(name, sl, nm); card.appendChild(row);
-    });
-    // 16-bit values that live outside the module block (delay time, custom EQ frequencies)
-    const wideKeys = { delay: ["delay_time", "delay_time_b"], eq: ["eq_freq_1", "eq_freq_2", "eq_freq_3"] }[key] || [];
-    wideKeys.forEach(wk => {
-      const info = (S.wide_info || {})[wk]; if (!info) return;
-      const row = document.createElement("div"); row.className = "param";
-      const nm = document.createElement("span"); nm.textContent = `${info.label}`; nm.title = `${info.unit}; ${info.applies}`;
-      const inp = document.createElement("input"); inp.type = "number"; inp.min = info.range[0]; inp.max = info.range[1];
-      inp.value = e.wide[wk]; inp.style.width = "100%";
-      inp.onchange = () => { const v = Math.max(info.range[0], Math.min(info.range[1], parseInt(inp.value, 10) || info.range[0])); e.wide[wk] = v; inp.value = v; scheduleLive(); };
-      const unit = document.createElement("span"); unit.textContent = info.unit;
-      row.append(nm, inp, unit); card.appendChild(row);
-      const show = () => { row.hidden = (wk === "delay_time_b" && m.type !== 9) || (wk.startsWith("eq_freq") && m.type !== 4); };
-      show(); card._labelPainters = (card._labelPainters || []).concat(show);
-    });
-    cards.appendChild(card);
-  }
-  const n = document.createElement("p"); n.className = "note";
-  n.textContent = "Knob names come from the device's own labels per model; an italic name ending in ? is a guess (hover for the confidence). Chain-order labels assume module ids follow the card order. Live audition changes the working copy only; nothing is stored until you press Save.";
-  ed.appendChild(n);
-  updateDirty();
+  return tg;
 }
-// ---- tabs and the NAM lab
+
+// ---------------------------------------------------------------- AI setup dialog
+const AI_FIELDS = {
+  anthropic: [["ANTHROPIC_API_KEY", "API key", "password"]],
+  openai: [["OPENAI_API_KEY", "API key", "password"], ["GE200_OPENAI_MODEL", "Model name", "text"]],
+  gemini: [["GEMINI_API_KEY", "API key", "password"], ["GE200_GEMINI_MODEL", "Model name", "text"]],
+  openrouter: [["OPENROUTER_API_KEY", "API key", "password"], ["GE200_OPENROUTER_MODEL", "Model name", "text"]],
+  local: [["GE200_LLM_BASE_URL", "Server address (OpenAI-compatible), e.g. http://localhost:11434/v1", "text"], ["GE200_LOCAL_MODEL", "Model name", "text"], ["GE200_LLM_API_KEY", "API key (only if your server wants one)", "password"]],
+};
+function renderAiSetup() {
+  const box = $("#aifields"); box.textContent = "";
+  $("#aipath").textContent = (S.tone && S.tone.config_path) || "";
+  for (const p of (S.tone && S.tone.providers) || []) {
+    const fs = el("fieldset"), lg = el("legend", "", p.label);
+    const st = el("span", "state " + (p.available ? "ok" : "no"), p.available ? "connected" : "not connected");
+    fs.append(lg, st);
+    if (p.id === "anthropic" && /not installed/.test(p.reason || "")) fs.appendChild(el("div", "note", "Needs the Python package: pip install anthropic"));
+    for (const [name, label, type] of AI_FIELDS[p.id] || []) {
+      const l = el("label", "", label), inp = el("input"); inp.type = type; inp.dataset.name = name; inp.autocomplete = "off"; inp.spellcheck = false;
+      if (type === "password") inp.placeholder = p.available && p.needs_key ? "saved: type to replace" : "paste it here";
+      else if (name.endsWith("_MODEL") && p.default_model) inp.placeholder = p.default_model;
+      l.appendChild(inp); fs.appendChild(l);
+    }
+    if (p.available && p.needs_key) {
+      const rm = el("button", "btn", "Forget this key"); rm.type = "button"; rm.style.marginTop = "8px";
+      rm.onclick = async () => { const key = (AI_FIELDS[p.id] || []).find(f => f[2] === "password");
+        try { await saveAi({ [key[0]]: "" }); toast("Key removed from this computer"); } catch (e) { toast(e.message, true); } };
+      fs.appendChild(rm);
+    }
+    box.appendChild(fs);
+  }
+}
+async function saveAi(values) {
+  const r = await api("/api/llm/config", { values }); S.tone = r.tone; renderAiSetup(); if (cur) renderEditor();
+}
+function openAiSetup() { renderAiSetup(); $("#aidlg").showModal(); }
+$("#aisetup").onclick = openAiSetup;
+$("#aiclose").onclick = () => $("#aidlg").close();
+$("#aisave").onclick = async () => {
+  const values = {};
+  document.querySelectorAll("#aifields input").forEach(i => { if (i.value.trim()) values[i.dataset.name] = i.value.trim(); });
+  if (!Object.keys(values).length) { toast("Nothing entered", true); return; }
+  try { await saveAi(values); toast("Saved"); } catch (e) { toast(e.message, true); }
+};
+
+// ---------------------------------------------------------------- tabs and the NAM lab
 let NAM = null;
 function showTab(which) {
   const nam = which === "nam";
-  document.querySelector("main:not(#namlab)").hidden = nam;
-  $("#namlab").hidden = !nam;
+  $("#presets").hidden = nam; $("#namlab").hidden = !nam;
   $("#tab-presets").classList.toggle("on", !nam); $("#tab-nam").classList.toggle("on", nam);
-  if (nam) loadNam();
+  if (nam) loadNam(); else layoutCables();
 }
 $("#tab-presets").onclick = () => showTab("presets");
 $("#tab-nam").onclick = () => showTab("nam");
@@ -417,7 +721,7 @@ async function loadNam() {
 }
 function showNamMeta() {
   const m = NAM && NAM.models.find(x => x.id === $("#nam-model").value);
-  $("#nam-meta").textContent = m ? [m.architecture + " " + (m.sample_rate / 1000) + " kHz", m.weights ? m.weights + " weights" : "", m.tone_type || "", m.gear_type || "", m.modeled_by ? "by " + m.modeled_by : ""].filter(Boolean).join(" · ") : "";
+  $("#nam-meta").textContent = m ? [m.architecture + " " + (m.sample_rate / 1000) + " kHz", m.weights ? m.weights + " weights" : "", m.tone_type || "", m.gear_type || "", m.modeled_by ? "by " + m.modeled_by : ""].filter(Boolean).join(", ") : "";
 }
 $("#nam-model").onchange = showNamMeta;
 $("#nam-render").onclick = async () => {
@@ -430,27 +734,25 @@ $("#nam-render").onclick = async () => {
   finally { b.disabled = false; }
 };
 
+// ---------------------------------------------------------------- rig dialog
 let rigDraft = null;
 const LONG_FIELDS = ["likes", "dislikes", "notes", "pickup_notes", "styles", "body", "listening"];
 function field(obj, key, label) {
-  const l = document.createElement("label"); l.textContent = label;
-  const long = LONG_FIELDS.includes(key);
+  const l = el("label", "", label), long = LONG_FIELDS.includes(key);
   const inp = document.createElement(long ? "textarea" : "input"); if (long) inp.rows = 2;
-  inp.maxLength = 400; inp.value = obj[key] || "";
-  inp.oninput = () => { obj[key] = inp.value; };
+  inp.maxLength = 400; inp.value = obj[key] || ""; inp.oninput = () => { obj[key] = inp.value; };
   l.appendChild(inp); return l;
 }
 function buildRigForm() {
   const box = $("#rigfields"); box.textContent = "";
   rigDraft.guitars.forEach((g, gi) => {
-    const fs = document.createElement("fieldset"); fs.className = "gcard";
-    const lg = document.createElement("legend"); lg.textContent = `Guitar ${gi + 1}`; fs.appendChild(lg);
+    const fs = el("fieldset"); fs.appendChild(el("legend", "", `Guitar ${gi + 1}`));
     for (const [k, label] of Object.entries(S.guitar_fields || {})) fs.appendChild(field(g, k, label));
-    const rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove this guitar"; rm.style.marginTop = "8px";
+    const rm = el("button", "btn", "Remove this guitar"); rm.type = "button"; rm.style.marginTop = "8px";
     rm.onclick = () => { rigDraft.guitars.splice(gi, 1); buildRigForm(); };
     fs.appendChild(rm); box.appendChild(fs);
   });
-  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ Add a guitar"; add.style.marginTop = "10px";
+  const add = el("button", "btn", "Add a guitar"); add.type = "button"; add.style.marginTop = "10px";
   add.onclick = () => { rigDraft.guitars.push({}); buildRigForm(); };
   box.appendChild(add);
   for (const [k, label] of Object.entries(S.rig_fields || {})) box.appendChild(field(rigDraft, k, label));
@@ -461,22 +763,27 @@ $("#rig").onclick = () => {
 };
 $("#rigcancel").onclick = () => $("#rigdlg").close();
 $("#rigsave").onclick = async () => {
-  try {
-    const r = await api("/api/rig", { rig: rigDraft }); S.rig = r.rig; $("#rigdlg").close(); toast("Rig saved");
-    if (cur) renderEditor();
-  } catch (e) { toast(e.message, true); }
+  try { const r = await api("/api/rig", { rig: rigDraft }); S.rig = r.rig; $("#rigdlg").close(); toast("Rig saved"); if (cur) renderEditor(); }
+  catch (e) { toast(e.message, true); }
 };
+
+// ---------------------------------------------------------------- header actions, shortcuts, start
 $("#search").oninput = () => S && renderList();
 $("#refresh").onclick = async () => {
-  const b = $("#refresh"); b.disabled = true; toast("Reading all presets from the device (about 16 s)...");
-  try { clearTimeout(timer); S = await api("/api/refresh", { epoch: ++epoch }); cur = null; $("#editor").innerHTML = '<div class="empty"><b>Pick a preset on the left</b>It is selected on the device and loaded here. Nothing is written until you press Save.</div>'; await loadState(); toast("Refreshed from the device"); }
-  catch (e) { toast(e.message, true); }
+  const b = $("#refresh"); b.disabled = true; toast("Reading all presets from the unit (about 16 s)...");
+  try {
+    clearTimeout(timer); S = await api("/api/refresh", { epoch: ++epoch }); cur = null;
+    $("#editor").innerHTML = '<div class="empty"><b>Pick a preset</b>It is selected on the unit and loaded here. Nothing is stored until you press Save.</div>';
+    await loadState(); toast("Refreshed from the unit");
+  } catch (e) { toast(e.message, true); }
   finally { b.disabled = false; }
 };
 $("#backup").onclick = async () => { try { const r = await api("/api/backup", {}); toast("Backup written: " + r.path); await loadState(); } catch (e) { toast(e.message, true); } };
-window.addEventListener("keydown", ev => { if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s" && $("#save") && !$("#namlab").offsetParent) { ev.preventDefault(); $("#save").click(); } });
+window.addEventListener("keydown", ev => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s" && $("#save") && !$("#presets").hidden) { ev.preventDefault(); $("#save").click(); }
+});
 window.addEventListener("beforeunload", ev => { if (isDirty()) { ev.preventDefault(); ev.returnValue = ""; } });
-loadState().catch(e => { $("#meta").textContent = "error: " + e.message; });
+loadState().catch(e => renderMeta("error: " + e.message));
 </script>
 </body>
 </html>

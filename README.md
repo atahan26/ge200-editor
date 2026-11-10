@@ -45,12 +45,14 @@ presets, and answers with a preset edit as JSON. The edit is validated and **cla
 presets use**, loaded into the editor, and *not* sent to the device until you press **Audition now** (turn your
 volume down first: levels are unverified) or move a control; nothing is stored until you press Save.
 
-Pick the provider and model next to the Generate button. Providers (`ge200/llm.py`), configured in `.env`
-(see `.env.example`) or the environment:
+Press **AI setup** in the editor's top bar, paste a key for any one provider and pick it next to the Generate button.
+Keys are stored in `llm.json` next to your rig file (outside the repository, plain text like a `.env`), never shown
+again and only sent to that provider. Or configure it in `.env` (see `.env.example`) or the environment. Providers
+(`ge200/llm.py`):
 
 | id | service | credentials |
 |---|---|---|
-| `anthropic` | Claude (`pip install anthropic`) | `ANTHROPIC_API_KEY` |
+| `anthropic` | Claude (uses the SDK if installed, plain REST otherwise) | `ANTHROPIC_API_KEY` |
 | `openai` | OpenAI Chat Completions | `OPENAI_API_KEY` |
 | `gemini` | Google Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 | `openrouter` | OpenRouter (many vendors) | `OPENROUTER_API_KEY` |
@@ -60,8 +62,9 @@ Pick the provider and model next to the Generate button. Providers (`ge200/llm.p
 name one in the environment or in the editor (it remembers it). The OpenAI-style and Gemini providers need no extra
 packages. Adding another back end is one small class in `ge200/llm.py`.
 
-Safety: keys and base URLs are read from the environment only. The web page can choose a provider *id* and a model
-*name*, never a URL or a key.
+Safety: hosted providers always talk to their fixed vendor URL, so a key can never be sent somewhere else; the only
+user-chosen address is your own `local` server. The page can choose a provider *id* and a model *name* per request,
+never a URL.
 **Verified vs not:** only the Claude provider has been run against the real service. The others are tested against a
 local fake HTTP server and follow the vendors' documented request shapes; a real service may reject something small.
 Please report what it says.

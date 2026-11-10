@@ -9,7 +9,8 @@ Back ends (all optional, none needs more than the standard library except Anthro
   local       any OpenAI-compatible server you run yourself (Ollama, LM Studio, vLLM, llama.cpp ...);
               set ``GE200_LLM_BASE_URL`` (Ollama's default is ``http://localhost:11434/v1``)
 
-Settings come from the environment (a git-ignored ``.env`` is loaded too, see ``ge200.env``):
+Settings come from the environment, a git-ignored ``.env`` (see ``ge200.env``) or the editor's own setup dialog
+(saved to ``llm.json`` next to ``rig.json``, outside the repository; a real environment variable wins):
 
   GE200_LLM_PROVIDER   default provider id (otherwise the first one that has credentials)
   GE200_LLM_MODEL      default model for the non-Anthropic providers (or GE200_<ID>_MODEL, e.g. GE200_OPENAI_MODEL)
@@ -17,9 +18,9 @@ Settings come from the environment (a git-ignored ``.env`` is loaded too, see ``
   GE200_LLM_API_KEY    optional key for the ``local`` provider
   GE200_LLM_MAX_TOKENS answer length limit for the OpenAI-style and Gemini providers (default 8000)
 
-Safety: API keys and base URLs are read from the environment only. The web page can pick a provider *id* and a
-model *name*, never a URL or a key, so a page (or a script reaching the local server) cannot make the editor send
-a key somewhere else. Model names are not guessed here: there is no default for the non-Anthropic providers, name
+Safety: hosted providers always talk to their fixed vendor URL, so a key can never be sent somewhere else. The only
+user-chosen address is the ``local`` provider's server, set in the setup dialog (a per-run token protects it) or the
+environment. Requests from the page can choose a provider *id* and a model *name*, never a URL. Model names are not guessed here: there is no default for the non-Anthropic providers, name
 one in the environment or in the editor.
 
 Privacy: the prompt (your description, the base preset, a sample of your presets, optionally model-name tables and
@@ -38,6 +39,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5"
@@ -55,11 +57,71 @@ class Completion:
     truncated: bool = False
 
 
+CONFIG_KEYS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GE200_LLM_BASE_URL",
+               "GE200_LLM_API_KEY", "GE200_LLM_MODEL", "GE200_LLM_PROVIDER", "GE200_ANTHROPIC_MODEL",
+               "GE200_OPENAI_MODEL", "GE200_GEMINI_MODEL", "GE200_OPENROUTER_MODEL", "GE200_LOCAL_MODEL")
+
+
+def config_path() -> Path:
+    """Where the editor's provider setup is stored: outside the repository, next to rig.json (or GE200_LLM_CONFIG)."""
+    override = os.environ.get("GE200_LLM_CONFIG")
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", str(Path.home()))) / "ge200" / "llm.json"
+    return Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "ge200" / "llm.json"
+
+
+def _file_env() -> Dict[str, str]:
+    try:
+        data = json.loads(config_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    env = data.get("env") if isinstance(data, dict) else None
+    if not isinstance(env, dict):
+        return {}
+    return {k: v.strip() for k, v in env.items() if k in CONFIG_KEYS and isinstance(v, str) and v.strip()}
+
+
+def save_config(updates: Dict[str, Optional[str]]) -> None:
+    """Store provider settings entered in the editor. Empty value / None removes a setting. Plain-text file (like
+    a .env): keep it out of backups you share. Only the whitelisted names are accepted; secrets are never returned."""
+    if not isinstance(updates, dict):
+        raise LlmError("settings must be an object")
+    current = _file_env()
+    for k, v in updates.items():
+        if k not in CONFIG_KEYS:
+            raise LlmError(f"unknown setting {k}")
+        if v is None or v == "":
+            current.pop(k, None)
+            continue
+        if not isinstance(v, str) or len(v) > 300 or any(ord(c) < 32 for c in v):
+            raise LlmError(f"invalid value for {k}")
+        v = v.strip()
+        if k == "GE200_LLM_BASE_URL" and urllib.parse.urlparse(v).scheme not in ("http", "https"):
+            raise LlmError("the server address must start with http:// or https://")
+        if k.endswith("_MODEL") and not MODEL_RE.match(v):
+            raise LlmError("invalid model name")
+        current[k] = v
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"env": current}, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+    _cache.clear()
+
+
 def _env(*names: str) -> str:
+    """A setting from the real environment, else from the editor's saved setup."""
+    saved = None
     for n in names:
         v = os.environ.get(n, "").strip()
         if v:
             return v
+        if saved is None:
+            saved = _file_env()
+        if saved.get(n):
+            return saved[n]
     return ""
 
 
@@ -114,20 +176,25 @@ class AnthropicProvider(Provider):
         self.fallbacks = fallbacks
 
     def default_model(self) -> str:
-        return ANTHROPIC_DEFAULT_MODEL
+        return _env("GE200_ANTHROPIC_MODEL") or ANTHROPIC_DEFAULT_MODEL
 
-    def info(self) -> dict:
+    def _has_sdk(self) -> bool:
         try:
             import anthropic  # noqa: F401
+            return True
         except ImportError:
-            return {"id": self.id, "label": self.label, "available": False, "default_model": ANTHROPIC_DEFAULT_MODEL,
-                    "needs_key": True, "reason": "the 'anthropic' package is not installed (pip install anthropic)"}
+            return False
+
+    def info(self) -> dict:
+        has_key = bool(_env("ANTHROPIC_API_KEY"))
+        base = {"id": self.id, "label": self.label, "default_model": self.default_model(), "needs_key": True}
         if self._client is not None:
-            return {"id": self.id, "label": self.label, "available": True, "reason": "",
-                    "default_model": ANTHROPIC_DEFAULT_MODEL, "needs_key": True}
-        has = bool(_env(*self.key_env))
-        return {"id": self.id, "label": self.label, "available": True, "default_model": ANTHROPIC_DEFAULT_MODEL,
-                "needs_key": True, "reason": "" if has else "no ANTHROPIC_API_KEY (an 'ant auth login' profile also works)"}
+            return {**base, "available": True, "reason": ""}
+        if has_key:                                  # works with or without the SDK (REST fallback)
+            return {**base, "available": True, "reason": ""}
+        if not self._has_sdk():
+            return {**base, "available": False, "reason": "set ANTHROPIC_API_KEY (no SDK needed)"}
+        return {**base, "available": True, "reason": "no ANTHROPIC_API_KEY (an 'ant auth login' profile also works)"}
 
     def client(self):
         if self._client is None:
@@ -135,10 +202,26 @@ class AnthropicProvider(Provider):
                 import anthropic
             except ImportError as e:
                 raise LlmError("the 'anthropic' package is not installed (pip install anthropic)") from e
-            self._client = anthropic.Anthropic()
+            self._client = anthropic.Anthropic(api_key=_env("ANTHROPIC_API_KEY") or None)
         return self._client
 
+    REST_URL = "https://api.anthropic.com/v1/messages"
+
+    def _complete_rest(self, system, user, schema, model) -> Completion:
+        """Plain Messages API call for when the SDK is not installed (schema travels in the prompt)."""
+        key = _env("ANTHROPIC_API_KEY")
+        data = post_json(self.REST_URL, {"x-api-key": key, "anthropic-version": "2023-06-01"}, {
+            "model": check_model(model or ANTHROPIC_DEFAULT_MODEL), "max_tokens": 16000,
+            "system": [{"type": "text", "text": system + "\n\n" + schema_instruction(schema), "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": user}]})
+        text = "".join(b.get("text", "") for b in data.get("content", []) if isinstance(b, dict) and b.get("type") == "text")
+        return Completion(text, refused=data.get("stop_reason") == "refusal", truncated=data.get("stop_reason") == "max_tokens")
+
     def complete(self, system, user, schema, model, effort="high") -> Completion:
+        if self._client is None and not self._has_sdk():
+            if not _env("ANTHROPIC_API_KEY"):
+                raise LlmError("no API key: set ANTHROPIC_API_KEY")
+            return self._complete_rest(system, user, schema, model)
         client = self.client()
         kwargs = dict(
             model=model or ANTHROPIC_DEFAULT_MODEL,
@@ -347,5 +430,5 @@ def overview() -> dict:
     infos = [_cache.get(pid, p).info() for pid, p in reg.items()]
     default = default_id(reg)
     usable = [i for i in infos if i["available"]]
-    return {"available": bool(usable), "default": default, "providers": infos,
-            "reason": "" if usable else "no provider is configured: set an API key in .env (see .env.example)"}
+    return {"available": bool(usable), "default": default, "providers": infos, "config_path": str(config_path()),
+            "reason": "" if usable else "no AI provider is connected yet"}

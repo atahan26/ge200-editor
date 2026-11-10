@@ -161,6 +161,7 @@ class RegistryTests(unittest.TestCase):
         for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY",
                   "GE200_LLM_PROVIDER", "GE200_LLM_MODEL", "GE200_LLM_BASE_URL", "GE200_LLM_API_KEY"):
             os.environ.pop(k, None)
+        os.environ["GE200_LLM_CONFIG"] = os.path.join(os.path.dirname(__file__), "no-such-dir", "llm.json")
         llm._cache.clear()
         self.noenv = mock.patch("ge200.env.load_env", lambda *a, **k: None)
         self.noenv.start()
@@ -195,8 +196,78 @@ class RegistryTests(unittest.TestCase):
     def test_overview_reports_missing_setup(self):
         o = llm.overview()
         if not o["available"]:
-            self.assertIn("API key", o["reason"])
+            self.assertIn("no AI provider", o["reason"])
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"GE200_LLM_CONFIG": os.path.join(self.tmp.name, "llm.json")})
+        self.env.start()
+        for k in llm.CONFIG_KEYS:
+            os.environ.pop(k, None)
+        llm._cache.clear()
+        self.noenv = mock.patch("ge200.env.load_env", lambda *a, **k: None)
+        self.noenv.start()
+
+    def tearDown(self):
+        self.noenv.stop()
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def test_saved_setup_makes_a_provider_available_and_secrets_never_come_back(self):
+        self.assertFalse({i["id"]: i for i in llm.overview()["providers"]}["openai"]["available"])
+        llm.save_config({"OPENAI_API_KEY": "sk-secret-123", "GE200_OPENAI_MODEL": "some-model"})
+        info = {i["id"]: i for i in llm.overview()["providers"]}["openai"]
+        self.assertTrue(info["available"])
+        self.assertEqual(info["default_model"], "some-model")
+        self.assertNotIn("sk-secret-123", json.dumps(llm.overview()))
+        llm.save_config({"OPENAI_API_KEY": ""})                               # empty removes it
+        self.assertFalse({i["id"]: i for i in llm.overview()["providers"]}["openai"]["available"])
+
+    def test_real_environment_wins_and_input_is_validated(self):
+        llm.save_config({"OPENAI_API_KEY": "from-file"})
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "from-env"}):
+            self.assertEqual(llm._env("OPENAI_API_KEY"), "from-env")
+        self.assertEqual(llm._env("OPENAI_API_KEY"), "from-file")
+        for bad in ({"NOT_ALLOWED": "x"}, {"OPENAI_API_KEY": "a\nb"}, {"GE200_LLM_BASE_URL": "file:///etc"},
+                    {"GE200_OPENAI_MODEL": "a b"}, {"OPENAI_API_KEY": "x" * 400}):
+            with self.assertRaises(llm.LlmError):
+                llm.save_config(bad)
+
+    def test_local_server_address_is_saved(self):
+        llm.save_config({"GE200_LLM_BASE_URL": "http://localhost:11434/v1", "GE200_LOCAL_MODEL": "llama3"})
+        info = {i["id"]: i for i in llm.overview()["providers"]}["local"]
+        self.assertTrue(info["available"])
+        self.assertEqual(info["default_model"], "llama3")
+
+
+class AnthropicRestTests(unittest.TestCase):
+    def test_works_without_the_sdk_using_plain_rest(self):
+        presets = make_presets()
+        svc = FakeService([(200, {"content": [{"type": "text", "text": good_answer()}], "stop_reason": "end_turn"})])
+        self.addCleanup(svc.close)
+        p = llm.AnthropicProvider()
+        p.REST_URL = svc.url + "/v1/messages"
+        with mock.patch.object(llm.AnthropicProvider, "_has_sdk", lambda self: False), \
+                mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-secret"}):
+            self.assertTrue(p.info()["available"])
+            res = tone.generate("lead", presets[1], presets, provider=p)
+        req = svc.requests[0]
+        self.assertEqual(req["path"], "/v1/messages")
+        self.assertEqual(req["headers"]["x-api-key"], "sk-ant-secret")
+        self.assertEqual(req["headers"]["anthropic-version"], "2023-06-01")
+        self.assertEqual(req["body"]["model"], "claude-opus-5-5")
+        self.assertIn("JSON schema", req["body"]["system"][0]["text"])
+        self.assertEqual(res["edit"]["name"], "DREAM CLEAN")
+
+    def test_without_sdk_and_key_it_is_not_available(self):
+        with mock.patch.object(llm.AnthropicProvider, "_has_sdk", lambda self: False), \
+                mock.patch.dict(os.environ, {"GE200_LLM_CONFIG": os.path.join(os.path.dirname(__file__), "none", "x.json")}):
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+            self.assertFalse(llm.AnthropicProvider().info()["available"])

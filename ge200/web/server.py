@@ -275,6 +275,7 @@ class App:
             "ranges": param_ranges(list(s.presets.values())),
             "backup_dir": self.backup_dir,
             "backed_up": self.backed_up,
+            "ir_names": self._ir_names(),
             "tone": ({"available": True, "reason": "", "default": "anthropic", "providers": []}
                      if (self.llm_client is not None or self.llm_provider is not None) else tone.available()),
             "rig": self.rig,
@@ -285,6 +286,13 @@ class App:
             "wide_info": param_info.WIDE_INFO,
             "note_divisions": param_info.NOTE_DIVISIONS,
         }
+
+    def _ir_names(self) -> list:
+        """Names of the ten user IR slots (cab models 27..36), from the device's name table 0x85 [verified by upload]."""
+        try:
+            return list(self.snap.name_tables().get(0x85, []))[:10]
+        except Exception:
+            return []
 
     def stored(self, slot: int) -> Preset:
         if slot not in self.snap.presets:
@@ -516,6 +524,13 @@ class Handler(BaseHTTPRequestHandler):
             slot = body.get("slot")
             if self.path == "/api/rig":
                 return self._json(200, {"rig": self.app.set_rig(body.get("rig"))})
+            if self.path == "/api/llm/config":
+                values = body.get("values")
+                if not isinstance(values, dict):
+                    raise EditError("values must be an object")
+                llm.save_config(values)
+                self.app._log("AI provider setup saved (" + ", ".join(sorted(values)) + ")")   # names only, never values
+                return self._json(200, {"tone": tone.available()})
             if self.path == "/api/nam/render":
                 if self.app.nam is None:
                     raise ValueError("NAM lab not configured (--nam-dir)")
