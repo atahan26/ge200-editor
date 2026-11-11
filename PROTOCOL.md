@@ -1,8 +1,13 @@
-# GE200 USB protocol notes (DRAFT, stage 2, static analysis only)
+# GE200 USB protocol notes
 
-Status legend: **[S]** = derived from static analysis of the vendor editor, never seen on the wire.
-**[V]** = verified on the user's own device (USB captures / descriptors).
-Nothing here has been confirmed by observing traffic yet.
+Status legend: **[S]** = derived from static analysis of the vendor editor or the firmware, not seen on the wire.
+**[V]** = verified on the author's own unit (firmware 2.0.4): USB captures, descriptors, or a write followed by a read-back.
+
+What is verified on a real unit: the transport and framing, the hello and the full state dump, the 512-byte preset layout,
+selecting and live-loading a preset, storing a slot (checked by reading it back), IR upload, and the expression pedal and
+MERGE bytes (decoded and checked on 200 presets, not yet by moving the pedal). Everything marked [S], "inferred" or
+"assumption" below is still a guess. The notes are kept in the order things were found, so early sections may describe a
+question that a later [V] section answers.
 
 ## Transport [V]
 - USB composite device, VID 0x0483 / PID 0x5703, product string "GE200".
@@ -47,9 +52,9 @@ Cycle order: E0 -> 90..9A -> 82 -> A2 -> A0 -> A1 -> A3 -> A4 -> A6 -> A8 -> E1 
   Other codes are ignored.
 - The code space is **symmetric**: most codes seen in the sender also appear in the receiver. A handler
   parses the payload into the editor's state buffer **and also into the "last sent" cache**, so the editor
-  does not echo received state back to the device [S]. This suggests the device reports its state using
-  the same CMD codes (e.g. after hello), but this is an inference, not an observation.
-- Meaning of each code is not yet decoded.
+  does not echo received state back to the device [S]. The device does report its state with these codes after
+  a hello [V, see "Observed on the wire"].
+- The codes used by this toolkit are described in the [V] sections below; the others are not decoded.
 
 ## HID report layout [V]
 Each 64-byte HID report (interrupt OUT 0x02 / interrupt IN 0x81, no report ID) is:
@@ -132,7 +137,8 @@ number of entries in the editor's model-name tables:
   the block order above (1=FX ... 9=REVERB) -- assumption, not verified.
 - State CMD 0x92 was not present in the dump; its role is unknown.
 - Bytes 104..126 are mostly 0/1 flags (probably footswitch/EXP/control assignments, "CTRL" tab of the
-  editor); bytes 128..136 hold a few more small values. Not decoded.
+  editor). Byte 126 is the MERGE switch and 128..235 the MERGE slots [V, see "Expression pedal" below];
+  the other flags are not decoded.
 - Preset volume ("PRESET VOL" in the editor) is most likely the 0x64 at offset 10; unconfirmed.
 
 ## Expression pedal, preset level and the active-preset state frames [V unless marked]
@@ -293,10 +299,14 @@ Mooer's own capture format; its layout is unknown (no sample file analysed), and
   device answers it with the full dump (confirmed above).
 
 ## Open questions
-1. Does the device answer 0xE0 by streaming its current state (read-only dump)? Unknown.
-2. Meaning/layout of each CMD's payload (parameter ids, preset number, name encoding).
-3. Which codes are safe read requests vs. state writes. Until known: **no host -> device traffic**
-   other than what is explicitly approved by the device owner.
+Answered since the first draft: the device does answer 0xE0 with a read-only dump of its whole state [V], and the
+writes this toolkit uses (select, live load, store slot, IR upload and clear) are known [V]. Still open:
+1. MERGE on the external pedal (EXP2): where it is stored.
+2. The pedal calibration, and the 0/1 flag at byte 11.
+3. The module-id order (1=FX ... 9=REVERB) is an assumption; the other flags in bytes 104..125.
+4. Mooer's amp-capture format (`*.amp` / `*.GNR`, CMD 0xE2): no sample file analysed.
+5. Every other code: treat it as a possible write. **No host -> device traffic** beyond the known commands
+   without the device owner's explicit approval.
 
 ## Safety
 - Launching the vendor editor may push default/UI state to the device (push-on-change against an
