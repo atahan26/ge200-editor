@@ -235,8 +235,8 @@ def generate(description: str, base: Preset, presets: Dict[int, Preset], names=N
     description = (description or "").strip()
     if not description:
         raise ToneError("describe the tone you want")
-    if len(description) > 1000:
-        raise ToneError("the description is too long (1000 characters at most)")
+    if len(description) > 4000:
+        raise ToneError("the description is too long (4000 characters at most)")
     prov = resolve_provider(provider, client, fallbacks)
     model = (model or prov.default_model() or "").strip()
     if not model:

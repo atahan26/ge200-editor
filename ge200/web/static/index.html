@@ -832,7 +832,7 @@ function readyProviders() { return ((S.tone && S.tone.providers) || []).filter(p
 function toneView() {
   const tg = el("div", "tone");
   const T = S.tone || {}, provs = readyProviders(), injected = T.available && !(T.providers || []).length;
-  tg.innerHTML = `<div class="trow"><textarea id="desc" rows="2" maxlength="1000" placeholder="Describe the tone, e.g. 'dreamy clean with a long shimmery reverb and a touch of chorus'" aria-label="Tone description"></textarea>
+  tg.innerHTML = `<div class="trow"><textarea id="desc" rows="4" maxlength="4000" placeholder="Describe the tone, e.g. 'dreamy clean with a long shimmery reverb and a touch of chorus'" aria-label="Tone description"></textarea>
     <div class="side"><select id="tguitar" aria-label="Guitar"></select>
     <select id="tprov" aria-label="AI provider" hidden></select><input id="tmodel" type="text" maxlength="100" spellcheck="false" aria-label="Model name" hidden>
     <button class="btn go" id="gen"></button></div></div><div class="note" id="tnote"></div>`;
